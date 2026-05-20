@@ -51,6 +51,19 @@ def title(img, text, col=(230,230,230)):
     cv2.putText(o,text,(6,20),cv2.FONT_HERSHEY_SIMPLEX,0.55,col,1,cv2.LINE_AA)
     return o
 
+def boxes_to_orig(boxes, r, dw, dh, h0, w0):
+    """letterbox 좌표 → 원본 이미지 좌표 역변환"""
+    boxes = boxes.clone()
+    boxes[:, 0] = (boxes[:, 0] - dw) / r   # x1
+    boxes[:, 1] = (boxes[:, 1] - dh) / r   # y1
+    boxes[:, 2] = (boxes[:, 2] - dw) / r   # x2
+    boxes[:, 3] = (boxes[:, 3] - dh) / r   # y2
+    boxes[:, 0].clamp_(0, w0)
+    boxes[:, 1].clamp_(0, h0)
+    boxes[:, 2].clamp_(0, w0)
+    boxes[:, 3].clamp_(0, h0)
+    return boxes
+
 def detect(fname):
     rgb0=read(RGB_DIR/fname); ir0=read(IR_DIR/fname)
     h0,w0=rgb0.shape[:2]
@@ -61,7 +74,7 @@ def detect(fname):
     dets=non_max_suppression(pred,0.35,0.45)[0]
     out=rgb0.copy()
     if dets is not None and len(dets):
-        dets[:,:4]=scale_coords((640,640),dets[:,:4],(h0,w0),ratio_pad=((r,r),(dh,dw))).round()
+        dets[:,:4]=boxes_to_orig(dets[:,:4], r, dw, dh, h0, w0).round()
         for *xyxy,conf,cls in dets:
             x1,y1,x2,y2=map(int,xyxy); c=int(cls); col=COLORS[c%len(COLORS)]
             cv2.rectangle(out,(x1,y1),(x2,y2),col,2)
