@@ -582,9 +582,12 @@ def run_three_way_detection(rgb_np, th_np, score_thresh, thermal_source=""):
     if results_fusion:
         import plotly.graph_objects as go
         summary = detection_summary(results_fusion)
+        _cls_hex = {n: "#{:02x}{:02x}{:02x}".format(*CLASS_COLORS[i])
+                    for i, n in CLASS_NAMES.items()}
+        bar_colors = [_cls_hex.get(c, "#6b8f5e") for c in summary.keys()]
         fig = go.Figure(go.Bar(
             x=list(summary.keys()), y=list(summary.values()),
-            marker_color="#6b8f5e", marker_line_width=0,
+            marker_color=bar_colors, marker_line_width=0,
         ))
         fig.update_layout(
             paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
@@ -855,6 +858,10 @@ with tab_video:
         device       = st.session_state.device
         # 그래프용 시계열 데이터
         log_frames, log_dets, log_ms = [], [], []
+        # 클래스별 프레임 시계열
+        log_cls = {name: [] for name in CLASS_NAMES.values()}
+        # 이벤트 로그 (시간대별 메모)
+        event_log = []   # [(frame, timestamp_str, event_str)]
 
         while cap_r.isOpened():
             ret_r, frm_r = cap_r.read()
@@ -900,6 +907,23 @@ with tab_video:
             log_frames.append(frame_idx)
             log_dets.append(len(results_fusion))
             log_ms.append(round(elapsed, 1))
+
+            # 클래스별 카운트
+            from collections import Counter as _Counter
+            frame_cls = _Counter(r["class"] for r in results_fusion)
+            for cname in CLASS_NAMES.values():
+                log_cls[cname].append(frame_cls.get(cname, 0))
+
+            # 이벤트: 신규 클래스 등장 or 탐지 수 급증 기록
+            ts_str = f"{frame_idx / max(fps_in, 1):.1f}s"
+            new_cls = [c for c in frame_cls if frame_cls[c] > 0 and
+                       sum(log_cls[c][:-1]) == 0]  # 이번 프레임에 처음 등장
+            if new_cls:
+                event_log.append((frame_idx, ts_str,
+                                  f"최초 탐지: {', '.join(new_cls)}"))
+            if len(log_dets) >= 2 and log_dets[-1] >= log_dets[-2] * 2 and log_dets[-1] >= 3:
+                event_log.append((frame_idx, ts_str,
+                                  f"탐지 급증: {log_dets[-2]}→{log_dets[-1]}개"))
 
             # 라이브 프리뷰 5프레임마다
             if proc_count % 5 == 1:
@@ -1014,10 +1038,10 @@ with tab_video:
 
             col_g1, col_g2 = st.columns(2)
             with col_g1:
-                st.caption("프레임별 탐지 객체 수")
+                st.caption("프레임별 탐지 객체 수 (전체)")
                 fig1 = go.Figure(go.Scatter(
                     x=log_frames, y=log_dets, mode="lines",
-                    line=dict(color="#6b8f5e", width=1.5),
+                    line=dict(color="#ffffaa", width=1.5),
                     fill=None,
                 ))
                 fig1.update_layout(**_chart_layout)
@@ -1032,6 +1056,41 @@ with tab_video:
                 fig2.update_layout(**_chart_layout)
                 st.plotly_chart(fig2, use_container_width=True)
 
+            # ── 클래스별 꺾은선 그래프 ──────────────────────────────
+            st.caption("클래스별 프레임 탐지 수 (꺾은선)")
+            _cls_hex = {n: "#{:02x}{:02x}{:02x}".format(*CLASS_COLORS[i])
+                        for i, n in CLASS_NAMES.items()}
+            fig_cls = go.Figure()
+            for cname, vals in log_cls.items():
+                if any(v > 0 for v in vals):
+                    fig_cls.add_trace(go.Scatter(
+                        x=log_frames, y=vals, mode="lines",
+                        name=cname,
+                        line=dict(color=_cls_hex.get(cname, "#aaa"), width=1.5),
+                    ))
+            _cls_layout = dict(**_chart_layout)
+            _cls_layout["height"] = 260
+            _cls_layout["showlegend"] = True
+            _cls_layout["legend"] = dict(
+                font=dict(color="#d4d4d4", size=10),
+                bgcolor="rgba(0,0,0,0)",
+                orientation="h", yanchor="bottom", y=1.02,
+            )
+            fig_cls.update_layout(**_cls_layout)
+            st.plotly_chart(fig_cls, use_container_width=True)
+
+            # ── 이벤트 메모 ─────────────────────────────────────────
+            if event_log:
+                st.caption("📋 시간대별 이벤트 로그")
+                for (fidx, ts, msg) in event_log:
+                    st.markdown(
+                        f"<div style='font-family:Courier New; font-size:0.78rem; "
+                        f"color:#a0b4c8; padding:2px 0;'>"
+                        f"<span style='color:#6b8f5e;'>▶ {ts}</span>"
+                        f"&nbsp;&nbsp;Frame {fidx:04d}&nbsp;&nbsp;{msg}</div>",
+                        unsafe_allow_html=True
+                    )
+
         # 클래스 분포
         if all_results:
             import pandas as pd
@@ -1040,9 +1099,12 @@ with tab_video:
             counts = Counter(r["class"] for r in all_results)
             df_sum = pd.DataFrame(counts.items(), columns=["클래스", "탐지 수"]).sort_values("탐지 수", ascending=False)
             st.subheader("전체 클래스별 탐지 통계 (융합 기준)")
+            _cls_hex = {n: "#{:02x}{:02x}{:02x}".format(*CLASS_COLORS[i])
+                        for i, n in CLASS_NAMES.items()}
+            bar_colors3 = [_cls_hex.get(c, "#6b8f5e") for c in df_sum["클래스"]]
             fig3 = go.Figure(go.Bar(
                 x=df_sum["클래스"], y=df_sum["탐지 수"],
-                marker_color="#6b8f5e", marker_line_width=0,
+                marker_color=bar_colors3, marker_line_width=0,
             ))
             fig3.update_layout(
                 paper_bgcolor="rgba(0,0,0,0)",

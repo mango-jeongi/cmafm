@@ -23,3 +23,24 @@ __pycache__/
 
 # HWP documents (binary)
 *.hwp
+
+# FLIR 원본 데이터 (대용량)
+FLIR_ADAS/
+FLIR_aligned.7z
+
+# 변환된 데이터셋 이미지 (대용량)
+RGBThermal/data/M3FD_yolo/
+RGBThermal/data/FLIR_yolo/
+RGBThermal/data/merged_txt/
+
+# 학습 로그/결과
+RGBThermal/runs/
+RGBThermal/*.log.txt
+RGBThermal/modality_analysis_log.txt
+RGBThermal/night_analysis_log.txt
+RGBThermal/paper_figures_log.txt
+RGBThermal/train_log.txt
+
+# 기타
+image/
+*.docx
