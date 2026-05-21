@@ -41,6 +41,16 @@ RGBThermal/night_analysis_log.txt
 RGBThermal/paper_figures_log.txt
 RGBThermal/train_log.txt
 
+# CFT_repo 대용량 데이터
+CFT_repo/runs/train/CFT_M3FD_30ep/
+CFT_repo/runs/train/CFT_M3FD_b4/
+CFT_repo/runs/train/CFT_test4/
+CFT_repo/runs/train/cmafm_m3fd_flir/weights/
+CFT_repo/weights/
+CFT_repo/data/
+
 # 기타
 image/
 *.docx
+*.pdf
+CMAFM_브리핑_시나리오.docx
