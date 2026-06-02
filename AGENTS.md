@@ -35,7 +35,9 @@ venv/bin/pip install streamlit==1.51.0 opencv-python numpy pandas Pillow albumen
 
 - `*.pth` / `RGBThermal/runs/` are **gitignored**. The dashboard expects `RGBThermal/runs/best.pth` by default.
 - M3FD images (`RGBThermal/data/M3FD/Vis`, `Ir`) are also gitignored. The **sample tab** needs them; **image upload tab** only needs a local checkpoint + user-provided RGB/thermal pair.
-- M3FD download: `RGBThermal/MANUAL.md` (gdown Google Drive folder). For a quick smoke test without the full dataset, build and save a checkpoint once (loads ImageNet backbones, ~765MB):
+- M3FD download: `RGBThermal/MANUAL.md` (gdown Google Drive folder).
+- **Bundled smoke-test images:** `RGBThermal/demo_assets/demo_rgb.jpg` and `demo_thermal.jpg` (upload tab; still need a local `runs/best.pth`).
+- For a quick smoke test without the full dataset, build and save a checkpoint once (loads ImageNet backbones, ~765MB):
 
 ```bash
 cd /workspace/RGBThermal
