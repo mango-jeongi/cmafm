@@ -20,6 +20,7 @@ M3FD_Detection/
 __pycache__/
 *.pyc
 *.pyo
+venv/
 
 # HWP documents (binary)
 *.hwp
