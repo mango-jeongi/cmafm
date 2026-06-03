@@ -1,0 +1,6 @@
+train_rgb: ../data/merged_txt/train_rgb_unified.txt
+val_rgb: ../data/merged_txt/val_rgb_unified.txt
+train_ir: ../data/merged_txt/train_ir_unified.txt
+val_ir: ../data/merged_txt/val_ir_unified.txt
+nc: 6
+names: ['People', 'Car', 'Bus', 'Motorcycle', 'Lamp', 'Truck']

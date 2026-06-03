@@ -1,56 +1,50 @@
-# Large dataset files
-RGBThermal.zip
-RGBThermal.z01
-RGBThermal.z02
-
-# Model checkpoint files (too large for GitHub)
-*.pth
-*.pt
-*.ckpt
-
-# Dataset images (too large for GitHub)
-RGBThermal/data/M3FD/Ir/
-RGBThermal/data/M3FD/Vis/
-RGBThermal/RGBThermal/
-
-# M3FD Annotation XMLs (dataset, not code)
-M3FD_Detection/
-
 # Python cache
 __pycache__/
 *.pyc
 *.pyo
+*.pyd
+.ipynb_checkpoints/
 
-# HWP documents (binary)
-*.hwp
+# Python Virtual Environments
+.venv/
+env/
+venv/
+ENV/
 
-# FLIR 원본 데이터 (대용량)
-FLIR_ADAS/
-FLIR_aligned.7z
+# VSCode settings
+.vscode/
 
-# 변환된 데이터셋 이미지 (대용량)
-RGBThermal/data/M3FD_yolo/
-RGBThermal/data/FLIR_yolo/
-RGBThermal/data/merged_txt/
+# Build artifacts
+build/
+dist/
+*.egg-info/
 
-# 학습 로그/결과
-RGBThermal/runs/
-RGBThermal/*.log.txt
-RGBThermal/modality_analysis_log.txt
-RGBThermal/night_analysis_log.txt
-RGBThermal/paper_figures_log.txt
-RGBThermal/train_log.txt
+# System files
+.DS_Store
+Thumbs.db
+desktop.ini
 
-# CFT_repo 대용량 데이터
-CFT_repo/runs/train/CFT_M3FD_30ep/
-CFT_repo/runs/train/CFT_M3FD_b4/
-CFT_repo/runs/train/CFT_test4/
-CFT_repo/runs/train/cmafm_m3fd_flir/weights/
-CFT_repo/weights/
-CFT_repo/data/
+# CFT engine (cloned at setup)
+cft_engine/
+CFT_repo/
 
-# 기타
-image/
-*.docx
-*.pdf
-CMAFM_브리핑_시나리오.docx
+# Model weights (download separately)
+weights/
+*.pt
+*.pth
+*.ckpt
+
+# Directories removed from release (kept on submission-v1669 for archival)
+docs/
+manuscript/
+results/
+
+# Local path application script
+scripts/apply_local_paths.py
+
+# Local Environment Variables
+.env
+
+# HPC outputs and tensorboard cache
+logs/
+runs/

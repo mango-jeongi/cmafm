@@ -1,0 +1,7 @@
+train_rgb: ../data/merged_txt/mini_train_rgb.txt
+val_rgb:   ../data/merged_txt/mini_val_rgb.txt
+train_ir:  ../data/merged_txt/mini_train_ir.txt
+val_ir:    ../data/merged_txt/mini_val_ir.txt
+
+nc: 6
+names: ['People', 'Car', 'Bus', 'Motorcycle', 'Lamp', 'Truck']

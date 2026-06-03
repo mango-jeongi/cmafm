@@ -1,8 +1,29 @@
-streamlit==1.51.0
-opencv-python==4.13.0.92
-numpy==2.3.5
-pandas==2.3.3
-Pillow==12.0.0
-albumentations==2.0.8
+# Core ML Dependencies (Python 3.10 Compatible)
 torch==2.6.0+cu124
 torchvision==0.21.0+cu124
+torchaudio==2.6.0+cu124
+
+# Scientific & Processing
+numpy<2.0.0
+pandas<2.2.0
+scipy
+opencv-python
+Pillow<11.0.0
+matplotlib
+seaborn
+tqdm
+pyyaml
+
+# Specialized Tools
+setuptools<70.0.0
+tensorboard
+streamlit
+albumentations
+pycocotools
+thop
+psutil
+requests
+
+# Path management and archive extraction
+python-dotenv
+py7zr
