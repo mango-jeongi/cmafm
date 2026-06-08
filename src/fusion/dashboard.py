@@ -16,341 +16,115 @@ import numpy as np
 import torch
 import streamlit as st
 from PIL import Image
+from dotenv import load_dotenv
+
+load_dotenv()
 
 sys.path.insert(0, str(Path(__file__).parent))
 
+# Add cft_engine to sys.path globally for YOLO checkpoint unpickling
+repo_root = Path(__file__).resolve().parents[2]
+cft_dir = str(repo_root / "cft_engine")
+if cft_dir not in sys.path:
+    sys.path.insert(0, cft_dir)
+
 # ── Page config ──────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="CMAFM Tactical Detection System",
+    page_title="CMAFM Detection System",
     page_icon="🎯",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-# ── Military Dark Navy Theme ──────────────────────────────────────────────────
+# ── Premium Modern Theme ──────────────────────────────────────────────────
 st.markdown("""
 <style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Outfit:wght@500;700;900&display=swap');
+
 /* -- Overall Background & Base Text -- */
-html, body,
-[data-testid="stAppViewContainer"],
-[data-testid="stMain"],
-[data-testid="block-container"],
-.main, .block-container,
-section[data-testid="stSidebarContent"],
-div[data-testid="stVerticalBlock"] {
-    background-color: #1e1e1e !important;
-    color: #d4d4d4 !important;
-    font-weight: bold !important;
-}
-[data-testid="stHeader"] {
-    background-color: #1e1e1e !important;
+html, body, [data-testid="stAppViewContainer"], [data-testid="stMain"], [data-testid="block-container"],
+section[data-testid="stSidebarContent"] {
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%) !important;
+    color: #e2e8f0 !important;
+    font-family: 'Inter', sans-serif !important;
 }
 
 /* -- Sidebar -- */
-[data-testid="stSidebar"],
-[data-testid="stSidebarContent"] {
-    background-color: #252526 !important;
-    border-right: 2px solid #6b8f5e !important;
-}
-[data-testid="stSidebar"] *,
-[data-testid="stSidebarContent"] * {
-    color: #d4d4d4 !important;
-    font-weight: bold !important;
-}
-
-/* -- Main Text Bold -- */
-*, p, label, span, div, li {
-    font-weight: bold !important;
+[data-testid="stSidebar"] {
+    background: rgba(15, 23, 42, 0.7) !important;
+    backdrop-filter: blur(16px);
+    border-right: 1px solid rgba(255, 255, 255, 0.1) !important;
 }
 
 /* -- Headings -- */
 h1, h2, h3, h4, h5, h6 {
-    color: #6b8f5e !important;
-    font-family: 'Courier New', monospace !important;
-    font-weight: 900 !important;
-    letter-spacing: 1px;
-}
-
-/* -- Captions -- */
-.stCaption, [data-testid="stCaptionContainer"] {
-    color: #b0c4d8 !important;
-    font-weight: bold !important;
+    font-family: 'Outfit', sans-serif !important;
+    font-weight: 800 !important;
+    background: -webkit-linear-gradient(45deg, #38bdf8, #818cf8);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    letter-spacing: -0.5px;
 }
 
 /* -- Tab Container Background -- */
-[data-testid="stTabs"],
-[data-testid="stTabs"] > div,
-[data-testid="stTabs"] > div > div,
-[data-testid="stTabs"] > div > div > div,
-div[role="tablist"],
-div[role="tablist"]::before,
-div[role="tablist"]::after {
-    background-color: #1e1e1e !important;
-    border-bottom: 1px solid #6b8f5e !important;
+[data-testid="stTabs"] button {
+    font-family: 'Outfit', sans-serif !important;
+    font-weight: 600 !important;
+    background-color: transparent !important;
+    color: #94a3b8 !important;
+    border: none !important;
+    border-bottom: 2px solid transparent !important;
+    transition: all 0.3s ease;
+}
+[data-testid="stTabs"] button[aria-selected="true"] {
+    color: #38bdf8 !important;
+    border-bottom: 2px solid #38bdf8 !important;
 }
 
-/* -- Tab Button: Light Background + Dark Text -- */
-[data-testid="stTabs"] button,
-div[role="tablist"] button {
-    background-color: #d4d4d4 !important;
-    color: #000000 !important;
-    border: 1px solid #c0c0c0 !important;
-    border-radius: 4px 4px 0 0 !important;
-    font-family: 'Courier New', monospace !important;
-    font-weight: 900 !important;
-    letter-spacing: 1px;
-}
-/* Force tab button text black */
-[data-testid="stTabs"] button p,
-[data-testid="stTabs"] button span,
-[data-testid="stTabs"] button div,
-div[role="tablist"] button p,
-div[role="tablist"] button span,
-div[role="tablist"] button div {
-    color: #000000 !important;
-    font-weight: 900 !important;
-}
-/* -- Selected Tab: Gold Background + Dark Text -- */
-[data-testid="stTabs"] button[aria-selected="true"],
-div[role="tablist"] button[aria-selected="true"] {
-    background-color: #6b8f5e !important;
-    color: #000000 !important;
-    border-bottom: 3px solid #4a6741 !important;
-    font-weight: 900 !important;
-}
-[data-testid="stTabs"] button[aria-selected="true"] p,
-[data-testid="stTabs"] button[aria-selected="true"] span,
-[data-testid="stTabs"] button[aria-selected="true"] div,
-div[role="tablist"] button[aria-selected="true"] p,
-div[role="tablist"] button[aria-selected="true"] span,
-div[role="tablist"] button[aria-selected="true"] div {
-    color: #000000 !important;
-    font-weight: 900 !important;
-}
-
-/* -- Tab Content Area Background -- */
-[data-testid="stTabsTabPanel"],
-div[role="tabpanel"] {
-    background-color: #1e1e1e !important;
-}
-
-/* -- Default Button -- */
-[data-testid="stButton"] button {
-    background-color: #252526 !important;
-    color: #d4d4d4 !important;
-    border: 1px solid #37373d !important;
-    font-weight: bold !important;
-}
 /* -- Primary Button -- */
 [data-testid="stButton"] button[kind="primary"] {
-    background-color: #37373d !important;
-    color: #6b8f5e !important;
-    border: 2px solid #6b8f5e !important;
-    font-family: 'Courier New', monospace !important;
-    font-weight: 900 !important;
-    letter-spacing: 1px;
+    background: linear-gradient(90deg, #38bdf8 0%, #818cf8 100%) !important;
+    color: white !important;
+    border: none !important;
+    border-radius: 8px !important;
+    font-family: 'Outfit', sans-serif !important;
+    font-weight: 700 !important;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 [data-testid="stButton"] button[kind="primary"]:hover {
-    background-color: #6b8f5e !important;
-    color: #1e1e1e !important;
-}
-/* -- Download Button -- */
-[data-testid="stDownloadButton"] button {
-    background-color: #252526 !important;
-    color: #6b8f5e !important;
-    border: 1px solid #6b8f5e !important;
-    font-family: 'Courier New', monospace !important;
-    font-weight: bold !important;
+    transform: translateY(-2px);
+    box-shadow: 0 10px 15px -3px rgba(56, 189, 248, 0.4);
 }
 
 /* -- Metric Cards -- */
 [data-testid="stMetric"] {
-    background-color: #252526 !important;
-    border: 1px solid #37373d !important;
-    border-left: 4px solid #6b8f5e !important;
-    border-radius: 4px !important;
-    padding: 8px 12px !important;
+    background: rgba(30, 41, 59, 0.6) !important;
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    border-radius: 12px !important;
+    padding: 16px !important;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
 }
 [data-testid="stMetricLabel"] {
-    color: #b0c4d8 !important;
-    font-family: 'Courier New', monospace !important;
-    font-size: 0.75rem !important;
-    font-weight: bold !important;
+    color: #94a3b8 !important;
+    font-family: 'Inter', sans-serif !important;
 }
 [data-testid="stMetricValue"] {
-    color: #6b8f5e !important;
-    font-family: 'Courier New', monospace !important;
-    font-weight: 900 !important;
-}
-
-/* -- Input Fields -- */
-[data-testid="stTextInput"] input,
-[data-testid="stSelectbox"] select,
-textarea {
-    background-color: #252526 !important;
-    color: #d4d4d4 !important;
-    border: 1px solid #37373d !important;
-    font-weight: bold !important;
-}
-[data-testid="stSlider"] { accent-color: #6b8f5e; }
-
-/* -- DataFrame -- */
-[data-testid="stDataFrame"] { border: 1px solid #37373d !important; }
-.stDataFrame thead th {
-    background-color: #37373d !important;
-    color: #6b8f5e !important;
-    font-weight: 900 !important;
-}
-.stDataFrame tbody td {
-    background-color: #252526 !important;
-    color: #d4d4d4 !important;
-    font-weight: bold !important;
-}
-
-/* -- Notification Box -- */
-[data-testid="stAlert"] {
-    background-color: #252526 !important;
-    border-left: 4px solid #6b8f5e !important;
-    color: #d4d4d4 !important;
-    font-weight: bold !important;
-}
-
-/* -- Divider -- */
-hr { border-color: #37373d !important; }
-
-/* -- Checkbox / Slider -- */
-[data-testid="stCheckbox"] { accent-color: #6b8f5e; }
-
-/* -- Progress Bar -- */
-[data-testid="stProgressBar"] > div > div {
-    background-color: #6b8f5e !important;
+    color: #38bdf8 !important;
+    font-family: 'Outfit', sans-serif !important;
+    font-weight: 800 !important;
 }
 
 /* -- File Uploader -- */
-[data-testid="stFileUploader"] {
-    background-color: #252526 !important;
-    border: 2px dashed #37373d !important;
-    border-radius: 4px !important;
-}
-
-/* -- Radio Button -- */
-[data-testid="stRadio"] label,
-[data-testid="stRadio"] span,
-[data-testid="stRadio"] p {
-    color: #d4d4d4 !important;
-    font-weight: bold !important;
-}
-
-/* -- Checkbox Text -- */
-[data-testid="stCheckbox"] label,
-[data-testid="stCheckbox"] span,
-[data-testid="stCheckbox"] p {
-    color: #d4d4d4 !important;
-    font-weight: bold !important;
-}
-
-/* -- Selectbox Text -- */
-[data-testid="stSelectbox"] label,
-[data-testid="stSelectbox"] span,
-[data-testid="stSelectbox"] div[data-baseweb="select"] span {
-    color: #d4d4d4 !important;
-    font-weight: bold !important;
-}
-[data-testid="stSelectbox"] div[data-baseweb="select"] {
-    background-color: #252526 !important;
-    border: 1px solid #37373d !important;
-}
-
-/* -- Slider Label & Value -- */
-[data-testid="stSlider"] label,
-[data-testid="stSlider"] span,
-[data-testid="stSlider"] p {
-    color: #d4d4d4 !important;
-    font-weight: bold !important;
-}
-
-/* ── number input ── */
-[data-testid="stNumberInput"] input {
-    background-color: #252526 !important;
-    color: #d4d4d4 !important;
-    font-weight: bold !important;
-    border: 1px solid #37373d !important;
-}
-[data-testid="stNumberInput"] label,
-[data-testid="stNumberInput"] span {
-    color: #d4d4d4 !important;
-    font-weight: bold !important;
-}
-
-/* -- File Uploader Text -- */
-[data-testid="stFileUploader"] label,
-[data-testid="stFileUploader"] span,
-[data-testid="stFileUploader"] p,
-[data-testid="stFileUploader"] small {
-    color: #d4d4d4 !important;
-    font-weight: bold !important;
-}
 [data-testid="stFileUploader"] section {
-    background-color: #252526 !important;
-    border: 2px dashed #37373d !important;
+    background: rgba(30, 41, 59, 0.4) !important;
+    border: 2px dashed rgba(56, 189, 248, 0.5) !important;
+    border-radius: 12px !important;
+    transition: all 0.3s ease;
 }
-
-/* -- Text Input Label -- */
-[data-testid="stTextInput"] label,
-[data-testid="stTextInput"] span {
-    color: #d4d4d4 !important;
-    font-weight: bold !important;
-}
-
-/* -- Text Inside Tab Panels -- */
-[data-testid="stTabsTabPanel"] p,
-[data-testid="stTabsTabPanel"] span,
-[data-testid="stTabsTabPanel"] label,
-[data-testid="stTabsTabPanel"] div {
-    color: #d4d4d4 !important;
-    font-weight: bold !important;
-}
-
-/* -- Markdown Text -- */
-[data-testid="stMarkdownContainer"] p,
-[data-testid="stMarkdownContainer"] li,
-[data-testid="stMarkdownContainer"] span {
-    color: #d4d4d4 !important;
-    font-weight: bold !important;
-}
-
-/* -- Box Inside Text (Success/Warning/Error/Info) -- */
-[data-testid="stAlert"] p,
-[data-testid="stAlert"] span,
-[data-testid="stAlert"] div {
-    color: #d4d4d4 !important;
-    font-weight: bold !important;
-}
-
-/* -- Spinner Text -- */
-[data-testid="stSpinner"] p,
-[data-testid="stSpinner"] span {
-    color: #6b8f5e !important;
-    font-weight: bold !important;
-}
-
-/* -- Progress Bar Text -- */
-[data-testid="stProgressBar"] + div,
-[data-testid="stProgressBar"] ~ p {
-    color: #6b8f5e !important;
-    font-weight: bold !important;
-}
-
-/* -- Empty State / Guidelines -- */
-[data-testid="stEmpty"] p {
-    color: #b0c4d8 !important;
-    font-weight: bold !important;
-}
-
-/* -- Bar Chart Label -- */
-[data-testid="stVegaLiteChart"] text {
-    fill: #d4d4d4 !important;
-    font-weight: bold !important;
+[data-testid="stFileUploader"] section:hover {
+    border-color: #38bdf8 !important;
+    background: rgba(56, 189, 248, 0.05) !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -358,16 +132,20 @@ hr { border-color: #37373d !important; }
 # ── Constants ─────────────────────────────────────────────────────────────────
 CLASS_NAMES  = {1: "People", 2: "Car", 3: "Bus", 4: "Motorcycle", 5: "Lamp", 6: "Truck"}
 CLASS_COLORS = {
-    1: (0,   255,  80),   # green
-    2: (255, 80,   0),    # orange-red
-    3: (0,   160, 255),   # blue
-    4: (255, 220,  0),    # yellow
-    5: (200,   0, 255),   # purple
-    6: (0,   220, 200),   # teal
+    1: (56,  189, 248),   # sky
+    2: (244, 63,  94),    # rose
+    3: (167, 139, 250),   # purple
+    4: (250, 204, 21),    # yellow
+    5: (52,  211, 153),   # emerald
+    6: (251, 146, 60),    # orange
 }
 IMG_SIZE = (640, 640)
 
-DEFAULT_CKPT = str(Path(__file__).resolve().parents[2] / "runs" / "best.pth")
+repo_root = Path(__file__).resolve().parents[2]
+DEFAULT_CKPT = os.getenv("WEIGHTS_FASTER_RCNN", str(repo_root / "runs" / "best.pth"))
+DEFAULT_CMAFM_YOLO_CKPT = os.getenv("WEIGHTS_CMAFM_YOLO", str(repo_root / "weights" / "best.pt"))
+DEFAULT_ABLATION_DIR = os.getenv("WEIGHTS_ABLATION_DIR", str(repo_root / "runs" / "ablation"))
+DATASET_DIR = Path(os.getenv("DATASET_DIR", "C:/Users/mingu/.datasets/M3FD"))
 
 # ── Session state ─────────────────────────────────────────────────────────────
 if "model" not in st.session_state:
@@ -412,7 +190,8 @@ def load_model_cached(ckpt_path: str, device_str: str, model_type: str = "Faster
             cfg = ckpt["config"]
 
         model = build_model(cfg.model, num_classes=cfg.data.num_classes)
-        model.load_state_dict(ckpt["model"])
+        state_dict = ckpt.get("model", ckpt)
+        model.load_state_dict(state_dict)
         model.to(device)
         model.eval()
         return model, cfg, device
@@ -432,7 +211,9 @@ def load_single_modal_models(ckpt_path: str, device_str: str):
     if "config" in fusion_ckpt:
         cfg = fusion_ckpt["config"]
 
-    ablation_dir = Path(ckpt_path).parent / "ablation"
+    # Force ablation path to be relative to the repo root's runs/ablation
+    repo_root = Path(__file__).resolve().parents[2]
+    ablation_dir = Path(os.getenv("WEIGHTS_ABLATION_DIR", str(repo_root / "runs" / "ablation")))
     rgb_ckpt_path = ablation_dir / "rgb_only_best.pth"
     th_ckpt_path  = ablation_dir / "thermal_only_best.pth"
 
@@ -452,6 +233,10 @@ def load_single_modal_models(ckpt_path: str, device_str: str):
 
 @torch.no_grad()
 def run_single_inference(model, rgb_t, th_t, device):
+    if model is None:
+        return {"boxes": torch.zeros((0, 4), device=device), 
+                "scores": torch.zeros((0,), device=device), 
+                "labels": torch.zeros((0,), dtype=torch.int64, device=device)}
     rgb_t = rgb_t.to(device)
     th_t  = th_t.to(device)
     outputs = model(rgb_t, th_t)
@@ -674,11 +459,13 @@ with st.sidebar:
     st.markdown("""
     <div style='text-align:center; padding:10px 0;'>
         <div style='font-size:2.5rem;'>🎯</div>
-        <div style='color:#6b8f5e; font-family:Courier New; font-size:1.1rem; font-weight:bold; letter-spacing:2px;'>
-            TACTICAL SYSTEM
+        <div style='font-family:Outfit, sans-serif; font-size:1.2rem; font-weight:900; 
+                    background: -webkit-linear-gradient(45deg, #38bdf8, #818cf8);
+                    -webkit-background-clip: text; -webkit-text-fill-color: transparent;'>
+            CMAFM SYSTEM
         </div>
-        <div style='color:#a0b4c8; font-family:Courier New; font-size:0.7rem; letter-spacing:1px;'>
-            CMAFM · RGB+LWIR FUSION
+        <div style='color:#94a3b8; font-family:Inter, sans-serif; font-size:0.8rem;'>
+            RGB + LWIR FUSION
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -702,7 +489,7 @@ with st.sidebar:
     if model_type == "Faster R-CNN (CMAFM)":
         default_path = DEFAULT_CKPT
     else:
-        default_path = str(Path(__file__).resolve().parents[2] / "weights" / "CMAFM_Pretrained.pt")
+        default_path = DEFAULT_CMAFM_YOLO_CKPT
 
     use_default_ckpt = st.checkbox(f"Use default path ({Path(default_path).name})",
                                    value=Path(default_path).exists())
@@ -711,20 +498,34 @@ with st.sidebar:
         if Path(ckpt_path).exists():
             st.success(f"✅ Model weights located: `{Path(ckpt_path).name}`")
         else:
-            st.error(f"❌ default path not found — Enter path manually")
+            st.error(f"❌ Default path not found — Enter path manually")
+            st.info("💡 **Missing Weights?** Download the pre-trained weights from the repository link and place them in the correct directory, or configure `.env`.")
             ckpt_path = st.text_input("Checkpoint Path", value="")
     else:
         ckpt_path = st.text_input("Checkpoint Path", value=default_path)
 
-    # -- Device (Auto selection) --
+    # -- Device Selection --
     st.subheader("⚡ Computing Device")
     cuda_avail = torch.cuda.is_available()
-    device_str = "cuda" if cuda_avail else "cpu"
+    device_options = ["cpu"]
+    
     if cuda_avail:
+        capability = torch.cuda.get_device_capability(0)
         gpu_name = torch.cuda.get_device_name(0)
-        st.success(f"CUDA ✔  {gpu_name}")
+        
+        # PyTorch 2.6.0+cu124 does not natively support sm_120 without PTX/Nightly
+        if capability[0] >= 12:
+            st.warning(f"⚠️ **Hardware Warning**: Your GPU ({gpu_name}, sm_{capability[0]}{capability[1]}) requires PyTorch Nightly for native support. Please upgrade PyTorch if you experience CUDA errors.")
+        
+        device_options.insert(0, "cuda")
+            
+    device_str = st.radio("Select Processing Device", device_options, horizontal=True, 
+                          help="If you encounter 'no kernel image' CUDA errors, switch to CPU.")
+    
+    if device_str == "cuda":
+        st.success(f"CUDA ✔ {gpu_name} (sm_{capability[0]}{capability[1]})")
     else:
-        st.info("CPU Mode (No CUDA)")
+        st.info("CPU Mode (Slower, but universally compatible)")
 
     # ── Load model button ──
     if st.button("🚀 Start System", type="primary", use_container_width=True):
@@ -739,10 +540,14 @@ with st.sidebar:
                 
                 # Load unimodal Faster R-CNN models for comparison
                 fr_ckpt_path = DEFAULT_CKPT
-                rgb_m, th_m, _ = load_single_modal_models(fr_ckpt_path, device_str)
-                st.session_state.rgb_only_model     = rgb_m
-                st.session_state.thermal_only_model = th_m
-            st.success(f"✅ System initialised ({model_type} + RGB-only + Thermal-only)")
+                if Path(fr_ckpt_path).exists():
+                    rgb_m, th_m, _ = load_single_modal_models(fr_ckpt_path, device_str)
+                    st.session_state.rgb_only_model     = rgb_m
+                    st.session_state.thermal_only_model = th_m
+                else:
+                    st.session_state.rgb_only_model     = None
+                    st.session_state.thermal_only_model = None
+            st.success(f"✅ System initialised ({model_type})")
 
     st.markdown("---")
 
@@ -767,37 +572,19 @@ with st.sidebar:
 # UI — Main Area
 # ══════════════════════════════════════════════════════════════════════════════
 
-_photo_path = Path(__file__).parent / "ltc_author_a.png"
-_photo_b64 = ""
-if _photo_path.exists():
-    import base64 as _b64
-    _photo_b64 = _b64.b64encode(_photo_path.read_bytes()).decode()
-
-_photo_html = (
-    f"<img src='data:image/png;base64,{_photo_b64}' "
-    f"style='width:90px; height:110px; object-fit:cover; object-position:top; "
-    f"border-radius:4px; opacity:0.85; filter:sepia(30%);'/>"
-    if _photo_b64 else ""
-)
-
-st.markdown(f"""
-<div style='border:2px solid #6b8f5e; border-radius:6px; padding:16px 24px 10px 24px; margin-bottom:8px;
-            background:linear-gradient(90deg,#252526 0%,#0a1628 100%);
-            display:flex; align-items:center; justify-content:space-between;'>
-    <div>
-        <div style='font-size:2.6rem; font-weight:900; color:#6b8f5e;
-                    font-family:Courier New; letter-spacing:4px;'>
-            🎯 CMAFM TACTICAL DETECTION SYSTEM
-        </div>
-        <div style='color:#a0b4c8; font-family:Courier New; font-size:0.85rem; margin-top:4px; letter-spacing:1px;'>
-            ◆ CROSS-MODAL ATTENTION FUSION &nbsp;|&nbsp; RGB + LWIR MULTISPECTRAL &nbsp;|&nbsp; M3FD DATASET
-        </div>
-        <div style='color:#556677; font-family:Courier New; font-size:0.7rem; margin-top:8px; letter-spacing:1px;'>
-            by. LTC Bansungwoo
-        </div>
+st.markdown("""
+<div style='border: 1px solid rgba(255,255,255,0.1); border-radius:16px; padding:24px; margin-bottom:16px;
+            background: rgba(30, 41, 59, 0.4); backdrop-filter: blur(12px); box-shadow: 0 10px 30px -10px rgba(0,0,0,0.5);'>
+    <div style='font-size:2.4rem; font-weight:900; font-family:Outfit, sans-serif;
+                background: -webkit-linear-gradient(45deg, #38bdf8, #818cf8);
+                -webkit-background-clip: text; -webkit-text-fill-color: transparent;'>
+        🎯 CMAFM DETECTION DASHBOARD
     </div>
-    <div style='margin-left:24px; flex-shrink:0;'>
-        {_photo_html}
+    <div style='color:#94a3b8; font-family:Inter, sans-serif; font-size:0.95rem; margin-top:8px;'>
+        <strong>Cross-Modal Attention Fusion Module</strong> | RGB + Thermal Multispectral Object Detection
+    </div>
+    <div style='color:#64748b; font-family:Inter, sans-serif; font-size:0.8rem; margin-top:8px;'>
+        BMVC 2026 Submission ID: <strong>1669</strong>
     </div>
 </div>
 """, unsafe_allow_html=True)
@@ -1203,17 +990,16 @@ with tab_video:
 # ══════════════════════════════════════════════════════════════════════════════
 
 with tab_webcam:
-    st.subheader("🎖️ Tactical Dataset Sample Test")
+    st.subheader("📊 Dataset Sample Test")
     st.markdown("Select a sample from the M3FD dataset to compare RGB-only, Thermal-only, and Fused detections.")
 
-    data_root = Path(__file__).parent / "data" / "M3FD"
-    vis_dir   = data_root / "Vis"
-    ir_dir    = data_root / "Ir"
+    vis_dir = DATASET_DIR / "Vis"
+    ir_dir  = DATASET_DIR / "Ir"
 
     has_data = vis_dir.exists() and ir_dir.exists()
     if not has_data:
-        st.warning("⚠️ `data/M3FD/Vis` or `data/M3FD/Ir` directories are missing. "
-                   "Please place the dataset first.")
+        st.warning(f"⚠️ Dataset directories not found at `{DATASET_DIR}`.")
+        st.info("💡 **Missing Dataset?** Download the M3FD dataset and extract it, or configure `DATASET_DIR` in your `.env`.")
     else:
         rgb_files = sorted(vis_dir.glob("*.png")) + sorted(vis_dir.glob("*.jpg"))
         st.caption(f"Dataset: {len(rgb_files)} samples found")
@@ -1319,8 +1105,8 @@ with tab_webcam:
 # ── Footer ────────────────────────────────────────────────────────────────────
 st.markdown("---")
 st.markdown("""
-<div style='text-align:center; color:#a0b4c8; font-family:Courier New; font-size:0.75rem; letter-spacing:1px;'>
-    🎯 CMAFM &nbsp;·&nbsp; CROSS-MODAL ATTENTION FUSION MODEL &nbsp;·&nbsp; M3FD DATASET<br>
-    ResNet-50 DUAL BACKBONE + FPN + Faster R-CNN &nbsp;·&nbsp; RGB + LWIR MULTISPECTRAL
+<div style='text-align:center; color:#94a3b8; font-family:Inter, sans-serif; font-size:0.85rem; padding: 20px 0;'>
+    🎯 <strong>CMAFM</strong> &nbsp;·&nbsp; CROSS-MODAL ATTENTION FUSION MODEL<br>
+    <span style='opacity: 0.7'>Dual Backbone + Faster R-CNN/YOLO &nbsp;·&nbsp; RGB + LWIR MULTISPECTRAL</span>
 </div>
 """, unsafe_allow_html=True)

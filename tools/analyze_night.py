@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import os
 env_data_dir = os.environ.get("CMAFM_DATA_DIR")
 user_home = os.environ.get("USERPROFILE") or os.environ.get("HOME")
-local_ssd_data = Path(user_home) / "bmvc_data" if user_home else None
+local_ssd_data = Path(user_home) / ".datasets" if user_home else None
 
 if env_data_dir and Path(env_data_dir).exists():
     BASE = Path(env_data_dir)
