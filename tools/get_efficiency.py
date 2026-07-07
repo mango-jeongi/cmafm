@@ -10,7 +10,7 @@ from models.yolo import Model
 from utils.torch_utils import select_device, model_info
 
 # --- PATHS ---
-CFG = ROOT / "src" / "engine" / "CFT_repo" / "yolov5l_cmafm_M3FD.yaml"
+CFG = ROOT / "cft_engine" / "models" / "transformer" / "yolov5l_fusion_transformerx3_M3FD.yaml"
 # -------------
 
 def get_efficiency():
