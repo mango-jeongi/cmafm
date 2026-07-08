@@ -51,6 +51,7 @@ if (Test-Path "src/engine/cft_engine_patches") {
 Copy-Item -Force "src\engine\engine_fixes\cmafm.py" "cft_engine\models\" -ErrorAction SilentlyContinue
 Copy-Item -Force "data\M3FD_FLIR.yaml", "data\m3fd_rgbt.yaml", "data\mini.yaml" "cft_engine\data\" -ErrorAction SilentlyContinue
 Copy-Item -Force "data\yolov5l_cmafm_M3FD.yaml" "cft_engine\models\" -ErrorAction SilentlyContinue
+Copy-Item -Force "data\yolov5l_fusion_transformerx3_M3FD.yaml" "cft_engine\models\transformer\" -ErrorAction SilentlyContinue
 
 & $PYTHON_EXE src/engine/engine_fixes/patch_parser.py
 
