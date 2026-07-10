@@ -9,7 +9,7 @@
 #SBATCH --gres=gpu:1               # 1 GPU (DataParallel with bs=8 causes 6x slowdown)
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32G
-#SBATCH --time=04:00:00            # Single GPU finishes 30 epochs in ~3h
+#SBATCH --time=12:00:00            # 100 epochs on M3FD+FLIR takes ~7.5h
 #SBATCH --get-user-env             # Load your login environment
 
 # No module load needed as venv is self-contained
@@ -36,11 +36,11 @@ DATA_CONFIG="../cft_engine/data/M3FD_FLIR.yaml"
 python train.py \
     --seed $SLURM_ARRAY_TASK_ID \
     --weights ../weights/yolov5l.pt \
-    --data ../cft_engine/data/M3FD_ONLY.yaml \
+    --data ../cft_engine/data/M3FD_FLIR_val_m3fd.yaml \
     --cfg ../cft_engine/models/transformer/yolov5l_cmafm_channel_only_M3FD.yaml \
     --hyp ../data/hyp.scratch.yaml \
-    --epochs 30 \
+    --epochs 100 \
     --batch-size 8 \
     --workers 8 \
     --project ../runs/ablation_channel/seed_$SLURM_ARRAY_TASK_ID \
-    --name channel_only_run
+    --name channel_only_run_100ep
