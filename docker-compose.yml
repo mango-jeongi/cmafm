@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  cmafm-dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cmafm_demo_container
+    ports:
+      - "8501:8501"
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - DATASET_DIR=/workspace/data
+    volumes:
+      - ./data:/workspace/data:ro
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped

@@ -142,10 +142,18 @@ CLASS_COLORS = {
 IMG_SIZE = (640, 640)
 
 repo_root = Path(__file__).resolve().parents[2]
-DEFAULT_CKPT = os.getenv("WEIGHTS_FASTER_RCNN", str(repo_root / "runs" / "best.pth"))
-DEFAULT_CMAFM_YOLO_CKPT = os.getenv("WEIGHTS_CMAFM_YOLO", str(repo_root / "weights" / "best.pt"))
-DEFAULT_ABLATION_DIR = os.getenv("WEIGHTS_ABLATION_DIR", str(repo_root / "runs" / "ablation"))
-DATASET_DIR = Path(os.getenv("DATASET_DIR", "C:/Users/mingu/.datasets/M3FD"))
+
+def _resolve_repo_path(env_var: str, default_rel: str) -> str:
+    val = os.getenv(env_var, default_rel)
+    p = Path(val)
+    if not p.is_absolute():
+        p = (repo_root / p).resolve()
+    return str(p)
+
+DEFAULT_CKPT = _resolve_repo_path("WEIGHTS_FASTER_RCNN", "runs/best.pth")
+DEFAULT_CMAFM_YOLO_CKPT = _resolve_repo_path("WEIGHTS_CMAFM_YOLO", "weights/best.pt")
+DEFAULT_ABLATION_DIR = _resolve_repo_path("WEIGHTS_ABLATION_DIR", "runs/ablation")
+DATASET_DIR = Path(_resolve_repo_path("DATASET_DIR", "C:/Users/mingu/.datasets/M3FD"))
 
 # ── Session state ─────────────────────────────────────────────────────────────
 if "model" not in st.session_state:
@@ -164,7 +172,7 @@ if "thermal_only_model" not in st.session_state:
 # Helper Functions
 # ══════════════════════════════════════════════════════════════════════════════
 
-@st.cache_resource(show_spinner="Loading model...")
+@st.cache_resource(show_spinner=False)
 def load_model_cached(ckpt_path: str, device_str: str, model_type: str = "Faster R-CNN (CMAFM)"):
     from config import Config
     from model import build_model
@@ -181,6 +189,8 @@ def load_model_cached(ckpt_path: str, device_str: str, model_type: str = "Faster
         from models.experimental import attempt_load
         model = attempt_load(ckpt_path, map_location=device)
         model.to(device)
+        if device.type == "cuda":
+            model.half()
         model.eval()
         return model, Config(), device
     else:
@@ -193,11 +203,13 @@ def load_model_cached(ckpt_path: str, device_str: str, model_type: str = "Faster
         state_dict = ckpt.get("model", ckpt)
         model.load_state_dict(state_dict)
         model.to(device)
+        if device.type == "cuda":
+            model.half()
         model.eval()
         return model, cfg, device
 
 
-@st.cache_resource(show_spinner="Loading single-modality model...")
+@st.cache_resource(show_spinner=False)
 def load_single_modal_models(ckpt_path: str, device_str: str):
     """Load RGB-only / Thermal-only ablation checkpoints."""
     from config import Config
@@ -211,9 +223,8 @@ def load_single_modal_models(ckpt_path: str, device_str: str):
     if "config" in fusion_ckpt:
         cfg = fusion_ckpt["config"]
 
-    # Force ablation path to be relative to the repo root's runs/ablation
-    repo_root = Path(__file__).resolve().parents[2]
-    ablation_dir = Path(os.getenv("WEIGHTS_ABLATION_DIR", str(repo_root / "runs" / "ablation")))
+    # Use resolved ablation directory
+    ablation_dir = Path(DEFAULT_ABLATION_DIR)
     rgb_ckpt_path = ablation_dir / "rgb_only_best.pth"
     th_ckpt_path  = ablation_dir / "thermal_only_best.pth"
 
@@ -223,6 +234,8 @@ def load_single_modal_models(ckpt_path: str, device_str: str):
             ck = torch.load(str(ckpt_p), map_location=device, weights_only=False)
             state = ck.get("model", ck)
             m.load_state_dict(state)
+        if device.type == "cuda":
+            m.half()
         m.to(device).eval()
         return m
 
@@ -239,6 +252,16 @@ def run_single_inference(model, rgb_t, th_t, device):
                 "labels": torch.zeros((0,), dtype=torch.int64, device=device)}
     rgb_t = rgb_t.to(device)
     th_t  = th_t.to(device)
+    try:
+        is_half = next(model.parameters()).dtype == torch.float16
+        if is_half:
+            rgb_t = rgb_t.half()
+            th_t  = th_t.half()
+        else:
+            rgb_t = rgb_t.float()
+            th_t  = th_t.float()
+    except (StopIteration, AttributeError):
+        pass
     outputs = model(rgb_t, th_t)
     return outputs[0]
 
@@ -254,15 +277,14 @@ def preprocess_pair(rgb_np: np.ndarray, thermal_np: np.ndarray):
         thermal_gray = thermal_np
     th_r   = cv2.resize(thermal_gray, (IMG_SIZE[1], IMG_SIZE[0]))
 
-    rgb_t = torch.from_numpy(rgb_r).permute(2, 0, 1).float() / 255.0
-    th_t  = torch.from_numpy(th_r).unsqueeze(0).float() / 255.0
-    th_t  = th_t.repeat(3, 1, 1)
+    rgb_t = torch.from_numpy(rgb_r).permute(2, 0, 1).float().div_(255.0)
+    th_t  = torch.from_numpy(th_r).unsqueeze(0).float().div_(255.0).repeat(3, 1, 1)
 
     return rgb_t.unsqueeze(0), th_t.unsqueeze(0), orig_h, orig_w
 
 
 @torch.no_grad()
-def run_inference(model, rgb_t, th_t, device):
+def run_inference(model, rgb_t, th_t, device, conf_thres=0.25, iou_thres=0.45):
     if st.session_state.get("model_type", "Faster R-CNN (CMAFM)") == "CMAFM-YOLO":
         import sys
         repo_root = Path(__file__).resolve().parents[2]
@@ -272,8 +294,8 @@ def run_inference(model, rgb_t, th_t, device):
         from utils.general import non_max_suppression
 
         is_half = next(model.parameters()).dtype == torch.float16
-        rgb_t = rgb_t.to(device)
-        th_t  = th_t.to(device)
+        rgb_t = rgb_t.to(device, non_blocking=True)
+        th_t  = th_t.to(device, non_blocking=True)
         if is_half:
             rgb_t = rgb_t.half()
             th_t  = th_t.half()
@@ -282,7 +304,7 @@ def run_inference(model, rgb_t, th_t, device):
             th_t  = th_t.float()
             
         pred = model(rgb_t, th_t)[0]
-        preds = non_max_suppression(pred, conf_thres=0.1, iou_thres=0.45)
+        preds = non_max_suppression(pred, conf_thres=conf_thres, iou_thres=iou_thres)
         p = preds[0]
         if p is None or len(p) == 0:
             return {
@@ -297,8 +319,15 @@ def run_inference(model, rgb_t, th_t, device):
             "labels": p[:, 5].long() + 1
         }
     else:
-        rgb_t = rgb_t.to(device)
-        th_t  = th_t.to(device)
+        is_half = next(model.parameters()).dtype == torch.float16
+        rgb_t = rgb_t.to(device, non_blocking=True)
+        th_t  = th_t.to(device, non_blocking=True)
+        if is_half:
+            rgb_t = rgb_t.half()
+            th_t  = th_t.half()
+        else:
+            rgb_t = rgb_t.float()
+            th_t  = th_t.float()
         outputs = model(rgb_t, th_t)
         return outputs[0]
 
@@ -375,7 +404,7 @@ def run_three_way_detection(rgb_np, th_np, score_thresh, thermal_source=""):
     elapsed_th = (time.perf_counter() - t0) * 1000
 
     t0 = time.perf_counter()
-    dets_fusion = run_inference(st.session_state.model, rgb_t, th_t, device)
+    dets_fusion = run_inference(st.session_state.model, rgb_t, th_t, device, conf_thres=score_thresh)
     elapsed_fusion = (time.perf_counter() - t0) * 1000
 
     vis_rgb,    results_rgb    = draw_detections(rgb_np, dets_rgb,    orig_h, orig_w, score_thresh)
@@ -491,8 +520,11 @@ with st.sidebar:
     else:
         default_path = DEFAULT_CMAFM_YOLO_CKPT
 
-    use_default_ckpt = st.checkbox(f"Use default path ({Path(default_path).name})",
-                                   value=Path(default_path).exists())
+    use_default_ckpt = st.checkbox(
+        f"Use default path ({Path(default_path).name})",
+        value=Path(default_path).exists(),
+        key=f"use_default_{model_type}"
+    )
     if use_default_ckpt:
         ckpt_path = default_path
         if Path(ckpt_path).exists():
@@ -500,9 +532,17 @@ with st.sidebar:
         else:
             st.error(f"❌ Default path not found — Enter path manually")
             st.info("💡 **Missing Weights?** Download the pre-trained weights from the repository link and place them in the correct directory, or configure `.env`.")
-            ckpt_path = st.text_input("Checkpoint Path", value="")
+            ckpt_path = st.text_input("Checkpoint Path", value="", key=f"ckpt_manual_{model_type}")
     else:
-        ckpt_path = st.text_input("Checkpoint Path", value=default_path)
+        ckpt_path = st.text_input("Checkpoint Path", value=default_path, key=f"ckpt_custom_{model_type}")
+
+    # Ensure relative paths are resolved against repo_root
+    if ckpt_path:
+        p = Path(ckpt_path)
+        if not p.is_absolute():
+            resolved_p = (repo_root / p).resolve()
+            if resolved_p.exists():
+                ckpt_path = str(resolved_p)
 
     # -- Device Selection --
     st.subheader("⚡ Computing Device")
@@ -532,7 +572,7 @@ with st.sidebar:
         if not ckpt_path or not Path(ckpt_path).exists():
             st.error("Checkpoint file not found.")
         else:
-            with st.spinner("Loading model..."):
+            with st.spinner("Initializing detection system..."):
                 model, cfg, device = load_model_cached(ckpt_path, device_str, model_type)
                 st.session_state.model  = model
                 st.session_state.device = device
@@ -547,7 +587,7 @@ with st.sidebar:
                 else:
                     st.session_state.rgb_only_model     = None
                     st.session_state.thermal_only_model = None
-            st.success(f"✅ System initialised ({model_type})")
+            st.success(f"✅ System initialized ({model_type})")
 
     st.markdown("---")
 
@@ -584,7 +624,7 @@ st.markdown("""
         <strong>Cross-Modal Attention Fusion Module</strong> | RGB + Thermal Multispectral Object Detection
     </div>
     <div style='color:#64748b; font-family:Inter, sans-serif; font-size:0.8rem; margin-top:8px;'>
-        BMVC 2026 Submission ID: <strong>1669</strong>
+        WACV 2027 Applications Track | <strong>Anonymous Submission</strong>
     </div>
 </div>
 """, unsafe_allow_html=True)
@@ -651,13 +691,19 @@ with tab_video:
         th_vid  = st.file_uploader("🌡️ Thermal Video", type=["mp4", "avi", "mov", "mkv"],
                                     key="vid_th")
 
-    col_opt1, col_opt2 = st.columns(2)
+    col_opt1, col_opt2, col_opt3 = st.columns(3)
     with col_opt1:
         max_frames = st.number_input("Maximum frames to process (0 = all)",
                                       min_value=0, max_value=10000, value=100, step=10)
     with col_opt2:
         frame_skip = st.number_input("Frame skip (process 1 in every N frames)",
                                       min_value=1, max_value=30, value=1, step=1)
+    with col_opt3:
+        tri_modal_mode = st.checkbox(
+            "Tri-Modal Comparison (3 Models)",
+            value=True,
+            help="When enabled, runs RGB-only, Thermal-only, and CMAFM Fusion simultaneously for side-by-side comparison (~85 ms). When disabled, runs only CMAFM Fusion at full real-time speed (58+ FPS / 17.2 ms)."
+        )
 
     vid_ready = model_ready and rgb_vid is not None and th_vid is not None
     run_vid = st.button("🎬 Start Video Detection", type="primary",
@@ -681,8 +727,7 @@ with tab_video:
 
         frames_to_process = total_frames if max_frames == 0 else min(total_frames, max_frames * frame_skip)
 
-        # Output video
-        # 3 video output files (record with mp4v, then re-encode with ffmpeg to H.264)
+        # Output video files
         raw_rgb_tmp    = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False).name
         raw_th_tmp     = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False).name
         raw_fusion_tmp = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False).name
@@ -691,27 +736,35 @@ with tab_video:
         out_fusion_tmp = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False).name
         fourcc = cv2.VideoWriter_fourcc(*"mp4v")
         out_fps = fps_in / frame_skip
-        writer_rgb    = cv2.VideoWriter(raw_rgb_tmp,    fourcc, out_fps, (width, height))
-        writer_th     = cv2.VideoWriter(raw_th_tmp,     fourcc, out_fps, (width, height))
+        writer_rgb    = cv2.VideoWriter(raw_rgb_tmp,    fourcc, out_fps, (width, height)) if tri_modal_mode else None
+        writer_th     = cv2.VideoWriter(raw_th_tmp,     fourcc, out_fps, (width, height)) if tri_modal_mode else None
         writer_fusion = cv2.VideoWriter(raw_fusion_tmp, fourcc, out_fps, (width, height))
 
         st.markdown("---")
         prog_bar  = st.progress(0, text="Processing...")
-        # Live preview 3 columns
-        prev_cols   = st.columns(3)
-        prev_rgb    = prev_cols[0].empty()
-        prev_th     = prev_cols[1].empty()
-        prev_fusion = prev_cols[2].empty()
-        prev_cols[0].caption("RGB-only")
-        prev_cols[1].caption("Thermal-only")
-        prev_cols[2].caption("Fusion (CMAFM)")
+        
+        # Live preview layout
+        if tri_modal_mode:
+            prev_cols   = st.columns(3)
+            prev_rgb    = prev_cols[0].empty()
+            prev_th     = prev_cols[1].empty()
+            prev_fusion = prev_cols[2].empty()
+            prev_cols[0].caption("RGB-only")
+            prev_cols[1].caption("Thermal-only")
+            prev_cols[2].caption("Fusion (CMAFM)")
+        else:
+            _, col_f_prev, _ = st.columns([1, 4, 1])
+            prev_fusion = col_f_prev.empty()
+            prev_rgb = None
+            prev_th = None
 
-        frame_idx    = 0
-        proc_count   = 0
-        total_dets   = 0
-        total_time   = 0.0
-        all_results  = []
-        device       = st.session_state.device
+        frame_idx         = 0
+        proc_count        = 0
+        total_dets        = 0
+        total_time_fusion = 0.0
+        total_time_total  = 0.0
+        all_results       = []
+        device            = st.session_state.device
         # Time-series data for plotting
         log_frames, log_dets, log_ms = [], [], []
         # Class-wise frame time-series
@@ -737,32 +790,48 @@ with tab_video:
             rgb_np = cv2.cvtColor(frm_r, cv2.COLOR_BGR2RGB)
             rgb_t, th_t, orig_h, orig_w = preprocess_pair(rgb_np, th_np)
 
-            t0 = time.perf_counter()
-            dets_rgb    = run_single_inference(st.session_state.rgb_only_model,     rgb_t, th_t, device)
-            dets_th     = run_single_inference(st.session_state.thermal_only_model, rgb_t, th_t, device)
-            dets_fusion = run_inference(st.session_state.model,                     rgb_t, th_t, device)
-            elapsed = (time.perf_counter() - t0) * 1000
-            total_time += elapsed
+            # 1. Time CMAFM Fusion model forward pass
+            t_f0 = time.perf_counter()
+            dets_fusion = run_inference(st.session_state.model, rgb_t, th_t, device, conf_thres=score_thresh)
+            elapsed_fusion = (time.perf_counter() - t_f0) * 1000
+            total_time_fusion += elapsed_fusion
 
-            vis_rgb,    results_rgb    = draw_detections(rgb_np, dets_rgb,    orig_h, orig_w, score_thresh)
+            # 2. Time unimodal baseline comparison models if tri-modal mode active
+            if tri_modal_mode and st.session_state.rgb_only_model is not None:
+                t_tri_0 = time.perf_counter()
+                dets_rgb = run_single_inference(st.session_state.rgb_only_model,     rgb_t, th_t, device)
+                dets_th  = run_single_inference(st.session_state.thermal_only_model, rgb_t, th_t, device)
+                elapsed_tri = (time.perf_counter() - t_tri_0) * 1000
+                elapsed_total = elapsed_fusion + elapsed_tri
+            else:
+                dets_rgb = {"boxes": torch.zeros((0, 4), device=device), "scores": torch.zeros((0,), device=device), "labels": torch.zeros((0,), dtype=torch.int64, device=device)}
+                dets_th  = {"boxes": torch.zeros((0, 4), device=device), "scores": torch.zeros((0,), device=device), "labels": torch.zeros((0,), dtype=torch.int64, device=device)}
+                elapsed_total = elapsed_fusion
+
+            total_time_total += elapsed_total
+            proc_count += 1
+
             vis_fusion, results_fusion = draw_detections(rgb_np, dets_fusion, orig_h, orig_w, score_thresh)
-
-            th_display = cv2.cvtColor(cv2.cvtColor(th_np, cv2.COLOR_GRAY2BGR), cv2.COLOR_BGR2RGB)
-            th_display = cv2.resize(th_display, (orig_w, orig_h))
-            vis_th, results_th = draw_detections(th_display, dets_th, orig_h, orig_w, score_thresh)
-
-            writer_rgb.write(cv2.cvtColor(vis_rgb,    cv2.COLOR_RGB2BGR))
-            writer_th.write(cv2.cvtColor(vis_th,     cv2.COLOR_RGB2BGR))
             writer_fusion.write(cv2.cvtColor(vis_fusion, cv2.COLOR_RGB2BGR))
+
+            if tri_modal_mode and writer_rgb is not None and writer_th is not None:
+                vis_rgb, results_rgb = draw_detections(rgb_np, dets_rgb, orig_h, orig_w, score_thresh)
+                th_display = cv2.cvtColor(cv2.cvtColor(th_np, cv2.COLOR_GRAY2BGR), cv2.COLOR_BGR2RGB)
+                th_display = cv2.resize(th_display, (orig_w, orig_h))
+                vis_th, results_th = draw_detections(th_display, dets_th, orig_h, orig_w, score_thresh)
+                writer_rgb.write(cv2.cvtColor(vis_rgb, cv2.COLOR_RGB2BGR))
+                writer_th.write(cv2.cvtColor(vis_th, cv2.COLOR_RGB2BGR))
+            else:
+                results_rgb = []
+                results_th  = []
 
             all_results.extend(results_fusion)
             total_dets += len(results_fusion)
-            proc_count += 1
 
             # Time-series log
             log_frames.append(frame_idx)
             log_dets.append(len(results_fusion))
-            log_ms.append(round(elapsed, 1))
+            log_ms.append(round(elapsed_fusion, 1))
 
             # Class-wise counts
             from collections import Counter as _Counter
@@ -783,22 +852,31 @@ with tab_video:
 
             # Live preview every 5 frames
             if proc_count % 5 == 1:
-                prev_rgb.image(vis_rgb,    caption=f"Frame {frame_idx} | {len(results_rgb)} targets",    use_container_width=True)
-                prev_th.image(vis_th,     caption=f"Frame {frame_idx} | {len(results_th)} targets",     use_container_width=True)
-                prev_fusion.image(vis_fusion, caption=f"Frame {frame_idx} | {len(results_fusion)} targets", use_container_width=True)
+                if tri_modal_mode and prev_rgb is not None and prev_th is not None:
+                    prev_rgb.image(vis_rgb, caption=f"RGB-only | {len(results_rgb)} targets", use_container_width=True)
+                    prev_th.image(vis_th, caption=f"Thermal-only | {len(results_th)} targets", use_container_width=True)
+                prev_fusion.image(vis_fusion, caption=f"CMAFM Fusion | {len(results_fusion)} targets ({elapsed_fusion:.1f} ms)", use_container_width=True)
 
-            avg_ms = total_time / proc_count
+            avg_fusion_ms = total_time_fusion / proc_count
+            avg_total_ms  = total_time_total  / proc_count
+            fps_fusion    = 1000.0 / max(avg_fusion_ms, 0.1)
+
+            if tri_modal_mode:
+                prog_text = f"Frame {frame_idx}/{frames_to_process} | CMAFM Fusion: {avg_fusion_ms:.1f} ms ({fps_fusion:.1f} FPS) | 3-Stream Total: {avg_total_ms:.1f} ms"
+            else:
+                prog_text = f"Frame {frame_idx}/{frames_to_process} | CMAFM Fusion: {avg_fusion_ms:.1f} ms ({fps_fusion:.1f} FPS)"
+
             prog_bar.progress(
                 min(frame_idx / max(frames_to_process - 1, 1), 1.0),
-                text=f"Frame {frame_idx}/{frames_to_process} | Average {avg_ms:.1f} ms | Fusion Detections {total_dets}"
+                text=prog_text
             )
             frame_idx += 1
 
         cap_r.release()
         if cap_t is not None:
             cap_t.release()
-        writer_rgb.release()
-        writer_th.release()
+        if writer_rgb is not None: writer_rgb.release()
+        if writer_th is not None:  writer_th.release()
         writer_fusion.release()
 
         # mp4v -> H.264 re-encoding (browser playback compatibility)
@@ -832,6 +910,17 @@ with tab_video:
 
         prog_bar.progress(1.0, text="Done!")
         st.success(f"✅ Video processing complete — {proc_count} frames, {total_dets} fusion detections")
+
+        # Performance Summary Cards
+        st.markdown("---")
+        sc1, sc2, sc3, sc4 = st.columns(4)
+        sc1.metric("Processed Frames", proc_count)
+        sc2.metric("Total Detections", total_dets)
+        sc3.metric("CMAFM Model Speed", f"{avg_fusion_ms:.1f} ms", f"{fps_fusion:.1f} FPS")
+        if tri_modal_mode:
+            sc4.metric("3-Stream Total", f"{avg_total_ms:.1f} ms", f"{(1000.0/max(avg_total_ms, 0.1)):.1f} Pipeline FPS")
+        else:
+            sc4.metric("Processing Mode", "Real-Time Fusion")
 
         # Playback Result Video
         st.subheader("Playback Result Video")
