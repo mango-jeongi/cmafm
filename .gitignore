@@ -24,8 +24,7 @@ dist/
 Thumbs.db
 desktop.ini
 
-# CFT engine (cloned at setup)
-cft_engine/
+# CFT engine (submodule)
 CFT_repo/
 
 # Model weights (download separately)
