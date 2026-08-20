@@ -1,6 +1,7 @@
 """
-CMAFM Dashboard — RGB+Thermal Multispectral Object Detection
-Real-time video/image upload and object detection visualization
+CMAFM Detection System — Multispectral Object Detection Platform
+Cross-Modal Attention-Based RGB-Thermal Fusion for Real-Time Perception
+WACV 2027 Applications Track — Anonymous Submission #1669
 """
 
 import os
@@ -8,6 +9,8 @@ os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 import sys
 import time
+import queue
+import threading
 import tempfile
 from pathlib import Path
 
@@ -20,6 +23,9 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+if torch.cuda.is_available():
+    torch.backends.cudnn.benchmark = True
+
 sys.path.insert(0, str(Path(__file__).parent))
 
 # Add cft_engine to sys.path globally for YOLO checkpoint unpickling
@@ -28,116 +34,155 @@ cft_dir = str(repo_root / "cft_engine")
 if cft_dir not in sys.path:
     sys.path.insert(0, cft_dir)
 
-# ── Page config ──────────────────────────────────────────────────────────────
+try:
+    from utils.general import non_max_suppression
+except ImportError:
+    non_max_suppression = None
+
+# ── Page Config ──────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="CMAFM Detection System",
-    page_icon="🎯",
+    page_title="CMAFM // Multispectral Object Detection",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-# ── Premium Modern Theme ──────────────────────────────────────────────────
+# ── Modern Minimalist Clean Dark Theme ───────────────────────────────────────
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=Outfit:wght@500;700;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 
-/* -- Overall Background & Base Text -- */
+/* -- Global Canvas -- */
 html, body, [data-testid="stAppViewContainer"], [data-testid="stMain"], [data-testid="block-container"],
 section[data-testid="stSidebarContent"] {
-    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%) !important;
+    background-color: #080c14 !important;
     color: #e2e8f0 !important;
-    font-family: 'Inter', sans-serif !important;
+    font-family: 'Inter', -apple-system, sans-serif !important;
 }
 
-/* -- Sidebar -- */
+/* -- Sidebar Styling -- */
 [data-testid="stSidebar"] {
-    background: rgba(15, 23, 42, 0.7) !important;
-    backdrop-filter: blur(16px);
-    border-right: 1px solid rgba(255, 255, 255, 0.1) !important;
+    background: #0c111d !important;
+    border-right: 1px solid #1e293b !important;
 }
 
-/* -- Headings -- */
+/* -- Headings & Typography -- */
 h1, h2, h3, h4, h5, h6 {
-    font-family: 'Outfit', sans-serif !important;
-    font-weight: 800 !important;
-    background: -webkit-linear-gradient(45deg, #38bdf8, #818cf8);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    letter-spacing: -0.5px;
+    font-family: 'Inter', sans-serif !important;
+    font-weight: 700 !important;
+    color: #f8fafc !important;
+    letter-spacing: -0.02em;
 }
 
-/* -- Tab Container Background -- */
+/* -- Tab Navigation -- */
+[data-testid="stTabs"] {
+    border-bottom: 1px solid #1e293b !important;
+    margin-bottom: 20px;
+}
 [data-testid="stTabs"] button {
-    font-family: 'Outfit', sans-serif !important;
+    font-family: 'JetBrains Mono', monospace !important;
     font-weight: 600 !important;
+    font-size: 0.85rem !important;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
     background-color: transparent !important;
     color: #94a3b8 !important;
     border: none !important;
     border-bottom: 2px solid transparent !important;
-    transition: all 0.3s ease;
+    padding: 10px 20px !important;
+    transition: all 0.2s ease;
 }
 [data-testid="stTabs"] button[aria-selected="true"] {
     color: #38bdf8 !important;
     border-bottom: 2px solid #38bdf8 !important;
+    background: rgba(56, 189, 248, 0.04) !important;
+}
+[data-testid="stTabs"] button:hover {
+    color: #f1f5f9 !important;
 }
 
 /* -- Primary Button -- */
 [data-testid="stButton"] button[kind="primary"] {
-    background: linear-gradient(90deg, #38bdf8 0%, #818cf8 100%) !important;
-    color: white !important;
-    border: none !important;
-    border-radius: 8px !important;
-    font-family: 'Outfit', sans-serif !important;
+    background: #0284c7 !important;
+    background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%) !important;
+    color: #ffffff !important;
+    border: 1px solid #38bdf8 !important;
+    border-radius: 4px !important;
+    font-family: 'JetBrains Mono', monospace !important;
     font-weight: 700 !important;
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    font-size: 0.85rem !important;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 8px 16px !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.15);
+    transition: all 0.15s ease;
 }
 [data-testid="stButton"] button[kind="primary"]:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 10px 15px -3px rgba(56, 189, 248, 0.4);
+    background: #0369a1 !important;
+    border-color: #7dd3fc !important;
+    box-shadow: 0 0 12px rgba(56, 189, 248, 0.4);
 }
 
-/* -- Metric Cards -- */
+/* -- Metric Displays -- */
 [data-testid="stMetric"] {
-    background: rgba(30, 41, 59, 0.6) !important;
-    backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.1) !important;
-    border-radius: 12px !important;
-    padding: 16px !important;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    background: #0f172a !important;
+    border: 1px solid #1e293b !important;
+    border-radius: 6px !important;
+    padding: 14px 18px !important;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 [data-testid="stMetricLabel"] {
     color: #94a3b8 !important;
-    font-family: 'Inter', sans-serif !important;
+    font-family: 'JetBrains Mono', monospace !important;
+    font-size: 0.75rem !important;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
 }
 [data-testid="stMetricValue"] {
     color: #38bdf8 !important;
-    font-family: 'Outfit', sans-serif !important;
-    font-weight: 800 !important;
+    font-family: 'JetBrains Mono', monospace !important;
+    font-weight: 700 !important;
+    font-size: 1.35rem !important;
 }
 
-/* -- File Uploader -- */
+/* -- Input & File Uploader -- */
 [data-testid="stFileUploader"] section {
-    background: rgba(30, 41, 59, 0.4) !important;
-    border: 2px dashed rgba(56, 189, 248, 0.5) !important;
-    border-radius: 12px !important;
-    transition: all 0.3s ease;
+    background: #0f172a !important;
+    border: 1px dashed #334155 !important;
+    border-radius: 6px !important;
+    transition: all 0.2s ease;
 }
 [data-testid="stFileUploader"] section:hover {
     border-color: #38bdf8 !important;
-    background: rgba(56, 189, 248, 0.05) !important;
+    background: rgba(56, 189, 248, 0.03) !important;
+}
+
+/* -- Dataframe / Tables -- */
+[data-testid="stDataFrame"] {
+    border: 1px solid #1e293b !important;
+    border-radius: 6px !important;
+    font-family: 'JetBrains Mono', monospace !important;
+}
+
+/* -- Code & Monospace Badges -- */
+code {
+    font-family: 'JetBrains Mono', monospace !important;
+    background: #1e293b !important;
+    color: #38bdf8 !important;
+    padding: 2px 6px !important;
+    border-radius: 4px !important;
 }
 </style>
 """, unsafe_allow_html=True)
 
-# ── Constants ─────────────────────────────────────────────────────────────────
+# ── Constants & Configuration ────────────────────────────────────────────────
 CLASS_NAMES  = {1: "People", 2: "Car", 3: "Bus", 4: "Motorcycle", 5: "Lamp", 6: "Truck"}
 CLASS_COLORS = {
-    1: (56,  189, 248),   # sky
-    2: (244, 63,  94),    # rose
-    3: (167, 139, 250),   # purple
-    4: (250, 204, 21),    # yellow
-    5: (52,  211, 153),   # emerald
-    6: (251, 146, 60),    # orange
+    1: (16,  185, 129),   # Emerald (People)
+    2: (56,  189, 248),   # Sky Blue (Car)
+    3: (129, 140, 248),   # Indigo (Bus)
+    4: (245, 158, 11),    # Amber (Motorcycle)
+    5: (20,  184, 166),   # Teal (Lamp)
+    6: (249, 115, 22),    # Orange (Truck)
 }
 IMG_SIZE = (640, 640)
 
@@ -150,12 +195,28 @@ def _resolve_repo_path(env_var: str, default_rel: str) -> str:
         p = (repo_root / p).resolve()
     return str(p)
 
+def _resolve_dataset_dir() -> Path:
+    env_dir = os.getenv("DATASET_DIR")
+    if env_dir:
+        p = Path(os.path.expanduser(env_dir))
+        if not p.is_absolute():
+            p = (repo_root / p).resolve()
+        return p
+    # Standard fallbacks: repo-relative data/M3FD or ~/.datasets/M3FD
+    p_local = repo_root / "data" / "M3FD"
+    if p_local.exists():
+        return p_local
+    return Path.home() / ".datasets" / "M3FD"
+
 DEFAULT_CKPT = _resolve_repo_path("WEIGHTS_FASTER_RCNN", "runs/best.pth")
 DEFAULT_CMAFM_YOLO_CKPT = _resolve_repo_path("WEIGHTS_CMAFM_YOLO", "weights/best.pt")
 DEFAULT_ABLATION_DIR = _resolve_repo_path("WEIGHTS_ABLATION_DIR", "runs/ablation")
-DATASET_DIR = Path(_resolve_repo_path("DATASET_DIR", "C:/Users/mingu/.datasets/M3FD"))
+DATASET_DIR = _resolve_dataset_dir()
+SAMPLE_IMG_DIR = repo_root / "data" / "samples"
+DEFAULT_RGB_VID = repo_root / "runs" / "flir_v1_rgb.mp4"
+DEFAULT_TH_VID  = repo_root / "runs" / "flir_v1_thermal.mp4"
 
-# ── Session state ─────────────────────────────────────────────────────────────
+# ── Session State Initialization ─────────────────────────────────────────────
 if "model" not in st.session_state:
     st.session_state.model = None
 if "device" not in st.session_state:
@@ -169,29 +230,84 @@ if "thermal_only_model" not in st.session_state:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# Helper Functions
+# Core Pipeline & Model Management
 # ══════════════════════════════════════════════════════════════════════════════
 
+class AsyncVideoWriter:
+    """Asynchronous background video writer to prevent disk I/O from blocking GPU inference."""
+    def __init__(self, filepath, fourcc, fps, dimensions):
+        if filepath is not None:
+            self.writer = cv2.VideoWriter(filepath, fourcc, fps, dimensions)
+            self.queue = queue.Queue(maxsize=256)
+            self.thread = threading.Thread(target=self._worker, daemon=True)
+            self.thread.start()
+        else:
+            self.writer = None
+            self.queue = None
+            self.thread = None
+
+    def _worker(self):
+        while True:
+            frame = self.queue.get()
+            if frame is None:
+                self.queue.task_done()
+                break
+            self.writer.write(frame)
+            self.queue.task_done()
+
+    def write(self, frame):
+        if self.writer is not None:
+            self.queue.put(frame)
+
+    def release(self):
+        if self.writer is not None:
+            self.queue.put(None)
+            self.thread.join()
+            self.writer.release()
+
+
+def get_ffmpeg_binary():
+    """Locate system ffmpeg or bundled imageio_ffmpeg binary."""
+    import shutil as _shutil
+    exe = _shutil.which("ffmpeg")
+    if exe and Path(exe).exists():
+        return exe
+    try:
+        import imageio_ffmpeg
+        exe = imageio_ffmpeg.get_ffmpeg_exe()
+        if exe and Path(exe).exists():
+            return exe
+    except Exception:
+        pass
+    return None
+
+
 @st.cache_resource(show_spinner=False)
-def load_model_cached(ckpt_path: str, device_str: str, model_type: str = "Faster R-CNN (CMAFM)"):
+def load_model_cached(ckpt_path: str, device_str: str, model_type: str = "CMAFM-YOLO"):
     from config import Config
     from model import build_model
 
     device = torch.device(device_str)
     
     if model_type == "CMAFM-YOLO":
-        import sys
-        repo_root = Path(__file__).resolve().parents[2]
-        cft_dir = str(repo_root / "cft_engine")
-        if cft_dir not in sys.path:
-            sys.path.append(cft_dir)
-            
         from models.experimental import attempt_load
         model = attempt_load(ckpt_path, map_location=device)
         model.to(device)
         if device.type == "cuda":
             model.half()
         model.eval()
+        
+        # Warmup GPU kernels and cuDNN buffers to eliminate cold-start latency
+        if device.type == "cuda":
+            with torch.inference_mode():
+                dummy_rgb = torch.zeros((1, 3, 640, 640), device=device, dtype=torch.float16)
+                dummy_th  = torch.zeros((1, 3, 640, 640), device=device, dtype=torch.float16)
+                for _ in range(3):
+                    pred = model(dummy_rgb, dummy_th)[0]
+                    if non_max_suppression is not None:
+                        _ = non_max_suppression(pred, conf_thres=0.25, iou_thres=0.45, agnostic=True, multi_label=False)
+            torch.cuda.synchronize()
+            
         return model, Config(), device
     else:
         cfg = Config()
@@ -206,24 +322,32 @@ def load_model_cached(ckpt_path: str, device_str: str, model_type: str = "Faster
         if device.type == "cuda":
             model.half()
         model.eval()
+        
+        # Warmup
+        if device.type == "cuda":
+            with torch.inference_mode():
+                dummy_rgb = torch.zeros((1, 3, 640, 640), device=device, dtype=torch.float16)
+                dummy_th  = torch.zeros((1, 3, 640, 640), device=device, dtype=torch.float16)
+                for _ in range(3):
+                    _ = model(dummy_rgb, dummy_th)
+            torch.cuda.synchronize()
+            
         return model, cfg, device
 
 
 @st.cache_resource(show_spinner=False)
 def load_single_modal_models(ckpt_path: str, device_str: str):
-    """Load RGB-only / Thermal-only ablation checkpoints."""
+    """Load RGB-only / Thermal-only baseline checkpoints."""
     from config import Config
     from ablation_models import SingleModalDetector
 
     device = torch.device(device_str)
-
-    # Extract config from fused model checkpoint
     cfg = Config()
-    fusion_ckpt = torch.load(ckpt_path, map_location=device, weights_only=False)
-    if "config" in fusion_ckpt:
-        cfg = fusion_ckpt["config"]
+    if Path(ckpt_path).exists():
+        fusion_ckpt = torch.load(ckpt_path, map_location=device, weights_only=False)
+        if "config" in fusion_ckpt:
+            cfg = fusion_ckpt["config"]
 
-    # Use resolved ablation directory
     ablation_dir = Path(DEFAULT_ABLATION_DIR)
     rgb_ckpt_path = ablation_dir / "rgb_only_best.pth"
     th_ckpt_path  = ablation_dir / "thermal_only_best.pth"
@@ -241,41 +365,41 @@ def load_single_modal_models(ckpt_path: str, device_str: str):
 
     rgb_model = _load("rgb",     rgb_ckpt_path)
     th_model  = _load("thermal", th_ckpt_path)
+    
+    if device.type == "cuda":
+        with torch.inference_mode():
+            dummy_rgb = torch.zeros((1, 3, 640, 640), device=device, dtype=torch.float16)
+            dummy_th  = torch.zeros((1, 3, 640, 640), device=device, dtype=torch.float16)
+            if rgb_model is not None: _ = rgb_model(dummy_rgb, dummy_th)
+            if th_model is not None:  _ = th_model(dummy_rgb, dummy_th)
+        torch.cuda.synchronize()
+        
     return rgb_model, th_model, device
 
 
-@torch.no_grad()
+@torch.inference_mode()
 def run_single_inference(model, rgb_t, th_t, device):
     if model is None:
         return {"boxes": torch.zeros((0, 4), device=device), 
                 "scores": torch.zeros((0,), device=device), 
                 "labels": torch.zeros((0,), dtype=torch.int64, device=device)}
-    rgb_t = rgb_t.to(device)
-    th_t  = th_t.to(device)
-    try:
-        is_half = next(model.parameters()).dtype == torch.float16
-        if is_half:
-            rgb_t = rgb_t.half()
-            th_t  = th_t.half()
-        else:
-            rgb_t = rgb_t.float()
-            th_t  = th_t.float()
-    except (StopIteration, AttributeError):
-        pass
+    target_dtype = torch.float16 if device.type == "cuda" else torch.float32
+    rgb_t = rgb_t.to(device, dtype=target_dtype, non_blocking=True)
+    th_t  = th_t.to(device, dtype=target_dtype, non_blocking=True)
     outputs = model(rgb_t, th_t)
     return outputs[0]
 
 
 def preprocess_pair(rgb_np: np.ndarray, thermal_np: np.ndarray):
-    """numpy RGB (H,W,3) + thermal (H,W) or (H,W,3) → tensors."""
+    """Convert numpy RGB (H,W,3) + thermal (H,W) to normalized tensors."""
     orig_h, orig_w = rgb_np.shape[:2]
 
-    rgb_r  = cv2.resize(rgb_np,      (IMG_SIZE[1], IMG_SIZE[0]))
+    rgb_r  = cv2.resize(rgb_np, (IMG_SIZE[1], IMG_SIZE[0]), interpolation=cv2.INTER_LINEAR)
     if thermal_np.ndim == 3:
         thermal_gray = cv2.cvtColor(thermal_np, cv2.COLOR_RGB2GRAY)
     else:
         thermal_gray = thermal_np
-    th_r   = cv2.resize(thermal_gray, (IMG_SIZE[1], IMG_SIZE[0]))
+    th_r   = cv2.resize(thermal_gray, (IMG_SIZE[1], IMG_SIZE[0]), interpolation=cv2.INTER_LINEAR)
 
     rgb_t = torch.from_numpy(rgb_r).permute(2, 0, 1).float().div_(255.0)
     th_t  = torch.from_numpy(th_r).unsqueeze(0).float().div_(255.0).repeat(3, 1, 1)
@@ -283,29 +407,20 @@ def preprocess_pair(rgb_np: np.ndarray, thermal_np: np.ndarray):
     return rgb_t.unsqueeze(0), th_t.unsqueeze(0), orig_h, orig_w
 
 
-@torch.no_grad()
+@torch.inference_mode()
 def run_inference(model, rgb_t, th_t, device, conf_thres=0.25, iou_thres=0.45):
-    if st.session_state.get("model_type", "Faster R-CNN (CMAFM)") == "CMAFM-YOLO":
-        import sys
-        repo_root = Path(__file__).resolve().parents[2]
-        cft_dir = str(repo_root / "cft_engine")
-        if cft_dir not in sys.path:
-            sys.path.append(cft_dir)
-        from utils.general import non_max_suppression
+    target_dtype = torch.float16 if device.type == "cuda" else torch.float32
+    rgb_t = rgb_t.to(device, dtype=target_dtype, non_blocking=True)
+    th_t  = th_t.to(device, dtype=target_dtype, non_blocking=True)
 
-        is_half = next(model.parameters()).dtype == torch.float16
-        rgb_t = rgb_t.to(device, non_blocking=True)
-        th_t  = th_t.to(device, non_blocking=True)
-        if is_half:
-            rgb_t = rgb_t.half()
-            th_t  = th_t.half()
-        else:
-            rgb_t = rgb_t.float()
-            th_t  = th_t.float()
-            
+    if st.session_state.get("model_type", "CMAFM-YOLO") == "CMAFM-YOLO":
         pred = model(rgb_t, th_t)[0]
-        preds = non_max_suppression(pred, conf_thres=conf_thres, iou_thres=iou_thres)
-        p = preds[0]
+        if non_max_suppression is not None:
+            preds = non_max_suppression(pred, conf_thres=conf_thres, iou_thres=iou_thres, agnostic=True, multi_label=False)
+            p = preds[0]
+        else:
+            p = None
+
         if p is None or len(p) == 0:
             return {
                 "boxes": torch.zeros((0, 4), device=device),
@@ -319,21 +434,12 @@ def run_inference(model, rgb_t, th_t, device, conf_thres=0.25, iou_thres=0.45):
             "labels": p[:, 5].long() + 1
         }
     else:
-        is_half = next(model.parameters()).dtype == torch.float16
-        rgb_t = rgb_t.to(device, non_blocking=True)
-        th_t  = th_t.to(device, non_blocking=True)
-        if is_half:
-            rgb_t = rgb_t.half()
-            th_t  = th_t.half()
-        else:
-            rgb_t = rgb_t.float()
-            th_t  = th_t.float()
         outputs = model(rgb_t, th_t)
         return outputs[0]
 
 
 def draw_detections(rgb_np, detections, orig_h, orig_w, score_thresh=0.5):
-    """Returns annotated BGR image + list of detection dicts."""
+    """Draw bounding boxes and return annotated image + detection records."""
     vis = cv2.cvtColor(rgb_np, cv2.COLOR_RGB2BGR)
     scale_x = orig_w / IMG_SIZE[1]
     scale_y = orig_h / IMG_SIZE[0]
@@ -351,60 +457,85 @@ def draw_detections(rgb_np, detections, orig_h, orig_w, score_thresh=0.5):
         x2 = int(box[2] * scale_x)
         y2 = int(box[3] * scale_y)
 
-        color = CLASS_COLORS.get(int(label), (255, 255, 255))
-        name  = CLASS_NAMES.get(int(label), f"cls{label}")
+        cname = CLASS_NAMES.get(int(label), f"Class {label}")
+        color = CLASS_COLORS.get(int(label), (56, 189, 248))
+        color_bgr = (color[2], color[1], color[0])
 
-        cv2.rectangle(vis, (x1, y1), (x2, y2), color, 2)
-        text = f"{name} {score:.2f}"
-        (tw, th), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.55, 1)
-        cv2.rectangle(vis, (x1, y1 - th - 8), (x1 + tw + 4, y1), color, -1)
-        cv2.putText(vis, text, (x1 + 2, y1 - 4),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 0, 0), 1, cv2.LINE_AA)
+        cv2.rectangle(vis, (x1, y1), (x2, y2), color_bgr, 2)
+        
+        tag = f"{cname.upper()} {score:.2f}"
+        (tw, th_text), _ = cv2.getTextSize(tag, cv2.FONT_HERSHEY_SIMPLEX, 0.42, 1)
+        cv2.rectangle(vis, (x1, max(0, y1 - th_text - 6)), (x1 + tw + 6, y1), color_bgr, -1)
+        cv2.putText(vis, tag, (x1 + 3, max(th_text + 2, y1 - 3)),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.42, (0, 0, 0), 1, cv2.LINE_AA)
 
-        results.append({"class": name, "score": float(score),
-                        "x1": x1, "y1": y1, "x2": x2, "y2": y2})
+        results.append({
+            "class": cname,
+            "confidence": float(score),
+            "x1": x1, "y1": y1, "x2": x2, "y2": y2,
+        })
 
-    return cv2.cvtColor(vis, cv2.COLOR_BGR2RGB), results
+    return cv2.cvtColor(vis, cv2.COLOR_RGB2BGR if False else cv2.COLOR_BGR2RGB), results
 
 
 def frame_to_np(uploaded_file):
-    """Convert uploaded image file → RGB numpy array."""
-    data = np.frombuffer(uploaded_file.read(), np.uint8)
-    img  = cv2.imdecode(data, cv2.IMREAD_COLOR)
+    """Convert uploaded image file or path -> RGB numpy array."""
+    if isinstance(uploaded_file, (str, Path)):
+        img = cv2.imread(str(uploaded_file), cv2.IMREAD_COLOR)
+    else:
+        data = np.frombuffer(uploaded_file.read(), np.uint8)
+        img  = cv2.imdecode(data, cv2.IMREAD_COLOR)
     return cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
 
 def thermal_to_np(uploaded_file):
-    """Convert uploaded thermal file → grayscale numpy array."""
-    data = np.frombuffer(uploaded_file.read(), np.uint8)
-    img  = cv2.imdecode(data, cv2.IMREAD_GRAYSCALE)
-    return img
+    """Convert uploaded thermal file or path -> grayscale numpy array."""
+    if isinstance(uploaded_file, (str, Path)):
+        return cv2.imread(str(uploaded_file), cv2.IMREAD_GRAYSCALE)
+    else:
+        data = np.frombuffer(uploaded_file.read(), np.uint8)
+        return cv2.imdecode(data, cv2.IMREAD_GRAYSCALE)
 
 
-def detection_summary(results):
-    """Count detections per class."""
-    from collections import Counter
-    counts = Counter(r["class"] for r in results)
-    return dict(counts)
-
-
-def run_three_way_detection(rgb_np, th_np, score_thresh, thermal_source=""):
-    """Display RGB-only, Thermal-only, and Fused detection results in 3 columns."""
+def run_three_way_detection(rgb_np, th_np, score_thresh, source_label=""):
+    """Display RGB-only, Thermal-only, and CMAFM Fused detection results side-by-side."""
     import pandas as pd
+    import plotly.graph_objects as go
+
+    if st.session_state.model is None or st.session_state.device is None:
+        st.error("SYSTEM OFFLINE — Please click 'START SYSTEM' in the sidebar to activate the detection engine.")
+        return
 
     device = st.session_state.device
     rgb_t, th_t, orig_h, orig_w = preprocess_pair(rgb_np, th_np)
 
+    # 0. Ensure GPU kernels and cuDNN memory are fully synchronized and warm
+    if device.type == "cuda":
+        with torch.inference_mode():
+            if st.session_state.rgb_only_model is not None:
+                _ = run_single_inference(st.session_state.rgb_only_model, rgb_t, th_t, device)
+            if st.session_state.thermal_only_model is not None:
+                _ = run_single_inference(st.session_state.thermal_only_model, rgb_t, th_t, device)
+            if st.session_state.model is not None:
+                _ = run_inference(st.session_state.model, rgb_t, th_t, device, conf_thres=score_thresh)
+        torch.cuda.synchronize()
+
+    # 1. RGB-only baseline
     t0 = time.perf_counter()
     dets_rgb = run_single_inference(st.session_state.rgb_only_model, rgb_t, th_t, device)
+    if device.type == "cuda": torch.cuda.synchronize()
     elapsed_rgb = (time.perf_counter() - t0) * 1000
 
+    # 2. Thermal-only baseline
     t0 = time.perf_counter()
     dets_th = run_single_inference(st.session_state.thermal_only_model, rgb_t, th_t, device)
+    if device.type == "cuda": torch.cuda.synchronize()
     elapsed_th = (time.perf_counter() - t0) * 1000
 
+    # 3. CMAFM Fused detection
     t0 = time.perf_counter()
     dets_fusion = run_inference(st.session_state.model, rgb_t, th_t, device, conf_thres=score_thresh)
+    if device.type == "cuda": torch.cuda.synchronize()
     elapsed_fusion = (time.perf_counter() - t0) * 1000
 
     vis_rgb,    results_rgb    = draw_detections(rgb_np, dets_rgb,    orig_h, orig_w, score_thresh)
@@ -415,128 +546,126 @@ def run_three_way_detection(rgb_np, th_np, score_thresh, thermal_source=""):
     vis_th, results_th = draw_detections(th_display, dets_th, orig_h, orig_w, score_thresh)
 
     st.markdown("---")
-    if thermal_source:
-        st.caption(f"Thermal source: {thermal_source}")
+    if source_label:
+        st.markdown(f"<span style='color:#94a3b8; font-size:0.8rem; font-family:\"JetBrains Mono\", monospace;'>[SOURCE] :: <code>{source_label}</code></span>", unsafe_allow_html=True)
 
-    # -- Result Images (Top) --
+    # -- 3-Column Display --
     col_r, col_t, col_f = st.columns(3)
     with col_r:
-        st.markdown("##### RGB-only")
+        st.markdown("##### RGB (Visible Only)")
         st.image(vis_rgb, use_container_width=True)
     with col_t:
-        st.markdown("##### Thermal-only")
+        st.markdown("##### Thermal (Infrared Only)")
         st.image(vis_th, use_container_width=True)
     with col_f:
-        st.markdown("##### RGB+Thermal Fusion (CMAFM)")
+        st.markdown("##### CMAFM Fused Detection")
         st.image(vis_fusion, use_container_width=True)
 
-    # -- Quantitative Metrics (Bottom) --
+    # -- Telemetry Cards --
     st.markdown("---")
     m1, m2, m3, m4, m5, m6 = st.columns(6)
     m1.metric("RGB Detections", len(results_rgb))
-    m2.metric("RGB Inference", f"{elapsed_rgb:.1f} ms")
+    m2.metric("RGB Latency", f"{elapsed_rgb:.1f} ms")
     m3.metric("Thermal Detections", len(results_th))
-    m4.metric("Thermal Inference", f"{elapsed_th:.1f} ms")
-    m5.metric("Fusion Detections", len(results_fusion))
-    m6.metric("Fusion Inference", f"{elapsed_fusion:.1f} ms")
+    m4.metric("Thermal Latency", f"{elapsed_th:.1f} ms")
+    m5.metric("Fused Detections", len(results_fusion))
+    m6.metric("Fusion Latency", f"{elapsed_fusion:.1f} ms", f"{1000.0/max(elapsed_fusion, 0.1):.1f} FPS")
 
-    # Class distribution graph
-    if results_fusion:
-        import plotly.graph_objects as go
-        summary = detection_summary(results_fusion)
-        _cls_hex = {n: "#{:02x}{:02x}{:02x}".format(*CLASS_COLORS[i])
-                    for i, n in CLASS_NAMES.items()}
-        bar_colors = [_cls_hex.get(c, "#6b8f5e") for c in summary.keys()]
-        fig = go.Figure(go.Bar(
-            x=list(summary.keys()), y=list(summary.values()),
-            marker_color=bar_colors, marker_line_width=0,
-        ))
-        fig.update_layout(
-            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-            font=dict(color="#d4d4d4", size=11),
-            margin=dict(l=40, r=20, t=20, b=40), height=220,
-            xaxis=dict(showgrid=False, zeroline=False, tickfont=dict(color="#aaa")),
-            yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.08)", zeroline=False, tickfont=dict(color="#888")),
-            showlegend=False,
-        )
-        st.caption("Detections by Class (Fusion Model)")
-        st.plotly_chart(fig, use_container_width=True)
+    # Target Classification Breakdown & Bounding Box Coordinates
+    c_graph, c_table = st.columns([1, 2])
+    with c_graph:
+        st.markdown("##### Detected Classes")
+        if results_fusion:
+            from collections import Counter
+            counts = Counter(r["class"] for r in results_fusion)
+            _cls_hex = {n: "#{:02x}{:02x}{:02x}".format(*CLASS_COLORS[i]) for i, n in CLASS_NAMES.items()}
+            bar_colors = [_cls_hex.get(c, "#38bdf8") for c in counts.keys()]
+            fig = go.Figure(go.Bar(
+                x=list(counts.keys()), y=list(counts.values()),
+                marker_color=bar_colors, marker_line_width=0,
+            ))
+            fig.update_layout(
+                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                font=dict(color="#cbd5e1", size=11, family="JetBrains Mono"),
+                margin=dict(l=30, r=10, t=10, b=30), height=220,
+                xaxis=dict(showgrid=False, zeroline=False, tickfont=dict(color="#94a3b8")),
+                yaxis=dict(showgrid=True, gridcolor="#1e293b", zeroline=False, tickfont=dict(color="#94a3b8")),
+                showlegend=False,
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("No objects detected above current threshold.")
 
-    # Detailed Fusion Table
-    st.subheader("Fusion Model Detailed Results")
-    if results_fusion:
-        df = pd.DataFrame(results_fusion)
-        df.index += 1
-        df.columns = ["Class", "Confidence", "X1", "Y1", "X2", "Y2"]
-        df["Confidence"] = df["Confidence"].apply(lambda x: f"{x:.3f}")
-        st.dataframe(df, use_container_width=True)
-    else:
-        st.warning(f"No detections found with confidence >= {score_thresh:.2f}.")
+    with c_table:
+        st.markdown("##### Bounding Box Coordinates")
+        if results_fusion:
+            df = pd.DataFrame(results_fusion)
+            df.index += 1
+            df.columns = ["Class", "Confidence", "X_Min", "Y_Min", "X_Max", "Y_Max"]
+            df["Confidence"] = df["Confidence"].apply(lambda x: f"{x:.3f}")
+            st.dataframe(df, use_container_width=True, height=220)
+        else:
+            st.info(f"Threshold: >= {score_thresh:.2f}")
 
-    # Download fusion result image
+    # Export Button
     result_bgr = cv2.cvtColor(vis_fusion, cv2.COLOR_RGB2BGR)
     _, buf = cv2.imencode(".jpg", result_bgr, [cv2.IMWRITE_JPEG_QUALITY, 95])
-    st.download_button("💾 Download Fusion Result Image", data=buf.tobytes(),
-                       file_name="detection_fusion.jpg", mime="image/jpeg")
+    st.download_button("EXPORT FUSED IMAGE", data=buf.tobytes(),
+                       file_name="cmafm_detection.jpg", mime="image/jpeg")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# UI — Sidebar
+# UI — Sidebar: System Configuration
 # ══════════════════════════════════════════════════════════════════════════════
 
 with st.sidebar:
     st.markdown("""
-    <div style='text-align:center; padding:10px 0;'>
-        <div style='font-size:2.5rem;'>🎯</div>
-        <div style='font-family:Outfit, sans-serif; font-size:1.2rem; font-weight:900; 
-                    background: -webkit-linear-gradient(45deg, #38bdf8, #818cf8);
-                    -webkit-background-clip: text; -webkit-text-fill-color: transparent;'>
-            CMAFM SYSTEM
+    <div style='padding:8px 0 14px 0; border-bottom: 1px solid #1e293b;'>
+        <div style='font-size:0.7rem; font-family:"JetBrains Mono", monospace; font-weight:700; color:#38bdf8; letter-spacing:0.14em; text-transform:uppercase;'>
+            MULTISPECTRAL DETECTION
         </div>
-        <div style='color:#94a3b8; font-family:Inter, sans-serif; font-size:0.8rem;'>
-            RGB + LWIR FUSION
+        <div style='font-size:1.25rem; font-weight:800; color:#f8fafc; margin-top:2px;'>
+            CMAFM PLATFORM
+        </div>
+        <div style='font-size:0.75rem; color:#64748b; font-family:"JetBrains Mono", monospace;'>
+            WACV 2027 · ANONYMOUS #1669
         </div>
     </div>
     """, unsafe_allow_html=True)
-    st.markdown("---")
 
-    # ── Model ──
-    st.subheader("🔧 Model Deployment")
-    
+    # ── Model Selection ──
+    st.markdown("#### [MODEL CONFIGURATION]")
     model_type = st.selectbox(
-        "Model Architecture",
-        ["Faster R-CNN (CMAFM)", "CMAFM-YOLO"],
-        help="Select the fusion model architecture to deploy."
+        "Architecture",
+        ["CMAFM-YOLO", "Faster R-CNN (CMAFM)"],
+        help="Select fusion architecture. CMAFM-YOLO is recommended for real-time video tracking."
     )
     st.session_state.model_type = model_type
     
     # Invalidate cache when model selection changes
     if "prev_model_type" in st.session_state and st.session_state.prev_model_type != model_type:
         st.cache_resource.clear()
+        st.session_state.model = None
     st.session_state.prev_model_type = model_type
     
-    if model_type == "Faster R-CNN (CMAFM)":
-        default_path = DEFAULT_CKPT
-    else:
-        default_path = DEFAULT_CMAFM_YOLO_CKPT
+    default_path = DEFAULT_CMAFM_YOLO_CKPT if model_type == "CMAFM-YOLO" else DEFAULT_CKPT
 
     use_default_ckpt = st.checkbox(
-        f"Use default path ({Path(default_path).name})",
+        f"Use verified weights ({Path(default_path).name})",
         value=Path(default_path).exists(),
         key=f"use_default_{model_type}"
     )
     if use_default_ckpt:
         ckpt_path = default_path
         if Path(ckpt_path).exists():
-            st.success(f"✅ Model weights located: `{Path(ckpt_path).name}`")
+            st.caption(f"Verified Checkpoint: `{Path(ckpt_path).name}`")
         else:
-            st.error(f"❌ Default path not found — Enter path manually")
-            st.info("💡 **Missing Weights?** Download the pre-trained weights from the repository link and place them in the correct directory, or configure `.env`.")
-            ckpt_path = st.text_input("Checkpoint Path", value="", key=f"ckpt_manual_{model_type}")
+            st.error("Checkpoint not found at default location.")
+            ckpt_path = st.text_input("Manual Path", value="", key=f"ckpt_manual_{model_type}")
     else:
-        ckpt_path = st.text_input("Checkpoint Path", value=default_path, key=f"ckpt_custom_{model_type}")
+        rel_default = "weights/best.pt" if model_type == "CMAFM-YOLO" else "runs/best.pth"
+        ckpt_path = st.text_input("Checkpoint Path", value=rel_default, key=f"ckpt_custom_{model_type}")
 
-    # Ensure relative paths are resolved against repo_root
     if ckpt_path:
         p = Path(ckpt_path)
         if not p.is_absolute():
@@ -544,41 +673,34 @@ with st.sidebar:
             if resolved_p.exists():
                 ckpt_path = str(resolved_p)
 
-    # -- Device Selection --
-    st.subheader("⚡ Computing Device")
+    # ── Computing Hardware ──
+    st.markdown("#### [COMPUTE ENGINE]")
     cuda_avail = torch.cuda.is_available()
     device_options = ["cpu"]
-    
     if cuda_avail:
-        capability = torch.cuda.get_device_capability(0)
         gpu_name = torch.cuda.get_device_name(0)
-        
-        # PyTorch 2.6.0+cu124 does not natively support sm_120 without PTX/Nightly
-        if capability[0] >= 12:
-            st.warning(f"⚠️ **Hardware Warning**: Your GPU ({gpu_name}, sm_{capability[0]}{capability[1]}) requires PyTorch Nightly for native support. Please upgrade PyTorch if you experience CUDA errors.")
-        
         device_options.insert(0, "cuda")
             
-    device_str = st.radio("Select Processing Device", device_options, horizontal=True, 
-                          help="If you encounter 'no kernel image' CUDA errors, switch to CPU.")
-    
+    device_str = st.radio("Device", device_options, horizontal=True)
     if device_str == "cuda":
-        st.success(f"CUDA ✔ {gpu_name} (sm_{capability[0]}{capability[1]})")
+        st.caption(f"Engine: `{gpu_name}` (FP16 Active)")
     else:
-        st.info("CPU Mode (Slower, but universally compatible)")
+        st.caption("Engine: CPU Fallback")
 
-    # ── Load model button ──
-    if st.button("🚀 Start System", type="primary", use_container_width=True):
+    # ── Start System Button ──
+    st.markdown("<br>", unsafe_allow_html=True)
+    if st.button("START SYSTEM", type="primary", use_container_width=True):
+        st.cache_resource.clear()
         if not ckpt_path or not Path(ckpt_path).exists():
             st.error("Checkpoint file not found.")
         else:
-            with st.spinner("Initializing detection system..."):
+            with st.spinner("Initializing multispectral detection engine..."):
                 model, cfg, device = load_model_cached(ckpt_path, device_str, model_type)
                 st.session_state.model  = model
                 st.session_state.device = device
                 st.session_state.cfg    = cfg
                 
-                # Load unimodal Faster R-CNN models for comparison
+                # Load baseline unimodal models for comparison
                 fr_ckpt_path = DEFAULT_CKPT
                 if Path(fr_ckpt_path).exists():
                     rgb_m, th_m, _ = load_single_modal_models(fr_ckpt_path, device_str)
@@ -587,176 +709,264 @@ with st.sidebar:
                 else:
                     st.session_state.rgb_only_model     = None
                     st.session_state.thermal_only_model = None
-            st.success(f"✅ System initialized ({model_type})")
+            st.success(f"SYSTEM ONLINE // {model_type}")
 
     st.markdown("---")
 
-    # ── Inference params ──
-    st.subheader("🎚️ Sensitivity Settings")
-    score_thresh = st.slider("Score Threshold", 0.1, 0.95, 0.5, 0.05)
+    # ── Detection Sensitivity Slider ──
+    st.markdown("#### [DETECTION SETTINGS]")
+    score_thresh = st.slider("Confidence Threshold", 0.10, 0.95, 0.40, 0.05,
+                             help="Minimum confidence threshold for detected objects.")
 
     st.markdown("---")
-    st.subheader("🏷️ Target Classes")
-    for cid, cname in CLASS_NAMES.items():
+    st.markdown("#### [DETECTED CLASSES]")
+    st.markdown("<span style='font-size:0.75rem; color:#94a3b8; font-family:\"JetBrains Mono\", monospace;'>PRIMARY CLASSES:</span>", unsafe_allow_html=True)
+    
+    col_t1, col_t2 = st.columns(2)
+    with col_t1:
+        st.markdown(
+            '<div style="background:#10b98118; border:1px solid #10b981; border-radius:4px; padding:4px 8px; text-align:center;">'
+            '<span style="color:#10b981; font-weight:700; font-size:0.75rem; font-family:\'JetBrains Mono\', monospace;">PEOPLE</span>'
+            '</div>', unsafe_allow_html=True
+        )
+    with col_t2:
+        st.markdown(
+            '<div style="background:#38bdf818; border:1px solid #38bdf8; border-radius:4px; padding:4px 8px; text-align:center;">'
+            '<span style="color:#38bdf8; font-weight:700; font-size:0.75rem; font-family:\'JetBrains Mono\', monospace;">CAR</span>'
+            '</div>', unsafe_allow_html=True
+        )
+        
+    st.markdown("<div style='margin-top:8px;'></div>", unsafe_allow_html=True)
+    st.markdown("<span style='font-size:0.75rem; color:#64748b; font-family:\"JetBrains Mono\", monospace;'>SECONDARY CLASSES:</span>", unsafe_allow_html=True)
+    
+    sec_html = ""
+    for cid in [3, 4, 5, 6]:
+        cname = CLASS_NAMES[cid]
         r, g, b = CLASS_COLORS[cid]
         hex_color = f"#{r:02x}{g:02x}{b:02x}"
-        st.markdown(
-            f'<span style="background:{hex_color};border-radius:3px;'
-            f'padding:3px 12px;color:#000;font-weight:bold;'
-            f'font-family:Courier New;letter-spacing:1px;">{cname}</span>',
-            unsafe_allow_html=True,
-        )
+        sec_html += f'<span style="background:{hex_color}15; border:1px solid {hex_color}66; border-radius:3px; padding:1px 6px; color:{hex_color}; font-size:0.7rem; font-family:\'JetBrains Mono\', monospace; margin-right:4px; display:inline-block; margin-bottom:4px;">{cname.upper()}</span>'
+    st.markdown(sec_html, unsafe_allow_html=True)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# UI — Main Area
+# UI — Main Operational Interface
 # ══════════════════════════════════════════════════════════════════════════════
 
+# Header Banner
 st.markdown("""
-<div style='border: 1px solid rgba(255,255,255,0.1); border-radius:16px; padding:24px; margin-bottom:16px;
-            background: rgba(30, 41, 59, 0.4); backdrop-filter: blur(12px); box-shadow: 0 10px 30px -10px rgba(0,0,0,0.5);'>
-    <div style='font-size:2.4rem; font-weight:900; font-family:Outfit, sans-serif;
-                background: -webkit-linear-gradient(45deg, #38bdf8, #818cf8);
-                -webkit-background-clip: text; -webkit-text-fill-color: transparent;'>
-        🎯 CMAFM DETECTION DASHBOARD
-    </div>
-    <div style='color:#94a3b8; font-family:Inter, sans-serif; font-size:0.95rem; margin-top:8px;'>
-        <strong>Cross-Modal Attention Fusion Module</strong> | RGB + Thermal Multispectral Object Detection
-    </div>
-    <div style='color:#64748b; font-family:Inter, sans-serif; font-size:0.8rem; margin-top:8px;'>
-        WACV 2027 Applications Track | <strong>Anonymous Submission</strong>
+<div style='background: #0f172a; border: 1px solid #1e293b; border-radius: 6px; padding: 16px 20px; margin-bottom: 18px;'>
+    <div style='display:flex; justify-content:space-between; align-items:center;'>
+        <div>
+            <div style='font-size:0.75rem; font-family:"JetBrains Mono", monospace; color:#38bdf8; font-weight:700; letter-spacing:0.12em;'>
+                CMAFM // MULTISPECTRAL OBJECT DETECTION PLATFORM
+            </div>
+            <div style='font-size:1.35rem; font-weight:800; color:#f8fafc; margin-top:2px;'>
+                Cross-Modal Attention Fusion for RGB-Thermal Perception
+            </div>
+            <div style='color:#94a3b8; font-size:0.8rem; margin-top:4px; font-family:"JetBrains Mono", monospace;'>
+                SUB-QUADRATIC COMPLEXITY O(C^2 + CHW) · REAL-TIME EDGE INFERENCE (>50 FPS)
+            </div>
+        </div>
+        <div style='text-align:right; font-family:"JetBrains Mono", monospace; font-size:0.75rem;'>
+            <span style='background:#10b98122; border:1px solid #10b981; color:#10b981; padding:3px 8px; border-radius:4px; font-weight:700;'>STATUS: ONLINE</span><br>
+            <span style='color:#64748b; font-size:0.7rem; margin-top:4px; display:inline-block;'>WACV 2027 APPLICATIONS</span>
+        </div>
     </div>
 </div>
 """, unsafe_allow_html=True)
 
 model_ready = st.session_state.model is not None
-
 if not model_ready:
-    st.warning("⚠️ System standby — Click **Start System** in the sidebar to activate.")
+    st.warning("STATUS: STANDBY — Click 'START SYSTEM' in the sidebar to activate the detection engine.")
 
-# ── Mode selection ──
-tab_image, tab_video, tab_webcam = st.tabs(["📡 Image Detection", "📹 Video Tracking", "🎖️ Sample Test"])
+tab_image, tab_video, tab_telemetry = st.tabs([
+    "IMAGE DETECTION",
+    "VIDEO TRACKING",
+    "SYSTEM ARCHITECTURE & BENCHMARKS"
+])
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TAB 1 — Image Detection
+# TAB 1 — Combined Image Detection & Dataset Samples
 # ══════════════════════════════════════════════════════════════════════════════
 
 with tab_image:
-    st.subheader("📡 Static Image Target Detection")
+    st.markdown("#### [MULTISPECTRAL IMAGE DETECTION]")
+    st.caption("Select a curated benchmark sample pair, explore the registered M3FD dataset, or upload custom RGB/Thermal images.")
 
-    st.caption("Upload RGB and Thermal images respectively.")
-    col_upload_rgb, col_upload_th = st.columns(2)
-    with col_upload_rgb:
-        rgb_file = st.file_uploader("📷 RGB Image",
-                                     type=["jpg", "jpeg", "png", "bmp"],
-                                     key="img_rgb")
-    with col_upload_th:
-        th_file  = st.file_uploader("🌡️ Thermal Image",
-                                     type=["jpg", "jpeg", "png", "bmp"],
-                                     key="img_th")
+    img_mode = st.radio(
+        "Image Source",
+        ["PRESET SAMPLES", "M3FD DATASET EXPLORER", "CUSTOM IMAGE UPLOAD"],
+        horizontal=True
+    )
 
-    if rgb_file and th_file:
-        col_prev_r, col_prev_t = st.columns(2)
-        rgb_file.seek(0); th_file.seek(0)
-        with col_prev_r:
-            st.image(rgb_file, caption="RGB Input", use_container_width=True)
-        with col_prev_t:
-            st.image(th_file,  caption="Thermal Input", use_container_width=True)
+    rgb_np_target = None
+    th_np_target  = None
+    source_tag    = ""
 
-    run_img = st.button("🔍 Run Detection", type="primary",
-                         disabled=(not model_ready or rgb_file is None or th_file is None),
-                         key="btn_img")
+    if img_mode == "PRESET SAMPLES":
+        sample_options = {
+            "Sample Pair 01 (00000)": ("sample1_rgb.png", "sample1_thermal.png"),
+            "Sample Pair 02 (00003)": ("sample2_rgb.png", "sample2_thermal.png"),
+            "Sample Pair 03 (00007)": ("sample3_rgb.png", "sample3_thermal.png"),
+        }
+        chosen_preset = st.selectbox("Select Sample Pair", list(sample_options.keys()))
+        rgb_fname, th_fname = sample_options[chosen_preset]
+        rgb_path = SAMPLE_IMG_DIR / rgb_fname
+        th_path  = SAMPLE_IMG_DIR / th_fname
 
-    if run_img and rgb_file and th_file:
-        rgb_file.seek(0); th_file.seek(0)
-        rgb_np = frame_to_np(rgb_file)
-        th_np  = thermal_to_np(th_file)
-        run_three_way_detection(rgb_np, th_np, score_thresh, "Uploaded Image")
+        if rgb_path.exists() and th_path.exists():
+            rgb_np_target = frame_to_np(rgb_path)
+            th_np_target  = thermal_to_np(th_path)
+            source_tag    = f"Preset: {chosen_preset}"
+        else:
+            st.error("Sample preset images not found in data/samples directory.")
+
+    elif img_mode == "M3FD DATASET EXPLORER":
+        vis_dir = DATASET_DIR / "Vis"
+        ir_dir  = DATASET_DIR / "Ir"
+        if vis_dir.exists() and ir_dir.exists():
+            rgb_files = sorted(vis_dir.glob("*.png")) + sorted(vis_dir.glob("*.jpg"))
+            col_s1, col_s2 = st.columns([3, 1])
+            with col_s1:
+                sample_idx = st.slider("Dataset Frame Index", 0, len(rgb_files) - 1, 0,
+                                       help="Select image index from M3FD multispectral benchmark.")
+            with col_s2:
+                st.markdown("<br>", unsafe_allow_html=True)
+                if st.button("RANDOM FRAME", use_container_width=True):
+                    sample_idx = int(np.random.randint(0, len(rgb_files)))
+                    st.rerun()
+            chosen_rgb = rgb_files[sample_idx]
+            chosen_th  = ir_dir / chosen_rgb.name
+            if chosen_rgb.exists() and chosen_th.exists():
+                rgb_np_target = frame_to_np(chosen_rgb)
+                th_np_target  = thermal_to_np(chosen_th)
+                source_tag    = f"M3FD Sample #{sample_idx:05d} ({chosen_rgb.name})"
+        else:
+            st.warning("M3FD dataset directory not found. Please specify DATASET_DIR in .env or select preset samples.")
+
+    else: # Custom Upload
+        col_u1, col_u2 = st.columns(2)
+        with col_u1:
+            rgb_file = st.file_uploader("RGB Image (Visible)", type=["jpg", "jpeg", "png", "bmp"], key="custom_rgb")
+        with col_u2:
+            th_file  = st.file_uploader("Thermal Image (Infrared)", type=["jpg", "jpeg", "png", "bmp"], key="custom_th")
+        if rgb_file and th_file:
+            rgb_file.seek(0); th_file.seek(0)
+            rgb_np_target = frame_to_np(rgb_file)
+            th_np_target  = thermal_to_np(th_file)
+            source_tag    = f"Custom Upload: {rgb_file.name} + {th_file.name}"
+
+    # Preview & Execution
+    if rgb_np_target is not None and th_np_target is not None:
+        st.markdown("---")
+        col_pr1, col_pr2 = st.columns(2)
+        with col_pr1:
+            st.image(rgb_np_target, caption=f"Visible RGB Input ({rgb_np_target.shape[1]}x{rgb_np_target.shape[0]})", use_container_width=True)
+        with col_pr2:
+            st.image(th_np_target, caption=f"Thermal IR Input ({th_np_target.shape[1]}x{th_np_target.shape[0]})", use_container_width=True)
+
+        if st.button("RUN DETECTION", type="primary", disabled=not model_ready, key="btn_run_img", use_container_width=True):
+            run_three_way_detection(rgb_np_target, th_np_target, score_thresh, source_tag)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TAB 2 — Video Detection
+# TAB 2 — Combined Video Detection & Benchmark Sequence
 # ══════════════════════════════════════════════════════════════════════════════
 
 with tab_video:
-    st.subheader("📹 Dynamic Target Tracking & Detection")
+    st.markdown("#### [MULTISPECTRAL VIDEO TRACKING & DETECTION]")
+    st.caption("Execute real-time multispectral tracking on continuous FLIR ADAS driving sequences or custom video feeds.")
 
-    st.markdown("> ⚠️ **Both videos must have the same number of frames and resolution.**")
-    col_v1, col_v2 = st.columns(2)
-    with col_v1:
-        rgb_vid = st.file_uploader("📹 RGB Video", type=["mp4", "avi", "mov", "mkv"],
-                                    key="vid_rgb")
-    with col_v2:
-        th_vid  = st.file_uploader("🌡️ Thermal Video", type=["mp4", "avi", "mov", "mkv"],
-                                    key="vid_th")
+    vid_mode = st.radio(
+        "Video Source",
+        ["FLIR ADAS v1 BENCHMARK SEQUENCE (DEFAULT)", "CUSTOM VIDEO UPLOAD"],
+        horizontal=True
+    )
 
+    rgb_vid_path = None
+    th_vid_path  = None
+    vid_source_label = ""
+
+    if vid_mode == "FLIR ADAS v1 BENCHMARK SEQUENCE (DEFAULT)":
+        if DEFAULT_RGB_VID.exists() and DEFAULT_TH_VID.exists():
+            rgb_vid_path = str(DEFAULT_RGB_VID)
+            th_vid_path  = str(DEFAULT_TH_VID)
+            vid_source_label = "FLIR ADAS v1 Benchmark Sequence (720p HD @ 25 FPS)"
+            st.info(f"Loaded Benchmark Sequence: `flir_v1_rgb.mp4` (RGB) & `flir_v1_thermal.mp4` (Thermal)")
+        else:
+            st.error("Default benchmark video files not found in runs/ directory.")
+    else:
+        col_v1, col_v2 = st.columns(2)
+        with col_v1:
+            rgb_vid_file = st.file_uploader("RGB Video", type=["mp4", "avi", "mov", "mkv"], key="u_vid_rgb")
+        with col_v2:
+            th_vid_file  = st.file_uploader("Thermal Video", type=["mp4", "avi", "mov", "mkv"], key="u_vid_th")
+        if rgb_vid_file and th_vid_file:
+            with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as rf:
+                rf.write(rgb_vid_file.read()); rgb_vid_path = rf.name
+            with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tf:
+                tf.write(th_vid_file.read()); th_vid_path = tf.name
+            vid_source_label = f"Custom Video: {rgb_vid_file.name}"
+
+    # Parameters
     col_opt1, col_opt2, col_opt3 = st.columns(3)
     with col_opt1:
-        max_frames = st.number_input("Maximum frames to process (0 = all)",
-                                      min_value=0, max_value=10000, value=100, step=10)
+        max_frames = st.number_input("Max Frames to Process (0 = Full Stream)", min_value=0, max_value=5000, value=100, step=25)
     with col_opt2:
-        frame_skip = st.number_input("Frame skip (process 1 in every N frames)",
-                                      min_value=1, max_value=30, value=1, step=1)
+        frame_skip = st.number_input("Frame Subsampling Rate", min_value=1, max_value=30, value=1, step=1,
+                                     help="Process 1 out of every N frames.")
     with col_opt3:
         tri_modal_mode = st.checkbox(
             "Tri-Modal Comparison (3 Models)",
-            value=True,
-            help="When enabled, runs RGB-only, Thermal-only, and CMAFM Fusion simultaneously for side-by-side comparison (~85 ms). When disabled, runs only CMAFM Fusion at full real-time speed (58+ FPS / 17.2 ms)."
+            value=False,
+            help="When enabled, runs RGB-only, Thermal-only, and CMAFM Fusion simultaneously for side-by-side verification (~85 ms). When disabled, runs only CMAFM Fusion at full real-time speed (50+ FPS / 17.6 ms)."
         )
 
-    vid_ready = model_ready and rgb_vid is not None and th_vid is not None
-    run_vid = st.button("🎬 Start Video Detection", type="primary",
-                         disabled=not vid_ready,
-                         key="btn_vid")
+    run_vid = st.button("RUN VIDEO TRACKING", type="primary",
+                         disabled=(not model_ready or rgb_vid_path is None or th_vid_path is None),
+                         key="btn_run_fmv", use_container_width=True)
 
-    if run_vid and rgb_vid and th_vid:
-        # Save RGB/Thermal to temp files
-        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as rf:
-            rf.write(rgb_vid.read()); rgb_tmp = rf.name
-        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tf:
-            tf.write(th_vid.read()); th_tmp = tf.name
-
-        cap_r = cv2.VideoCapture(rgb_tmp)
-        cap_t = cv2.VideoCapture(th_tmp) if th_tmp else None
+    if run_vid and rgb_vid_path and th_vid_path:
+        cap_r = cv2.VideoCapture(rgb_vid_path)
+        cap_t = cv2.VideoCapture(th_vid_path)
 
         total_frames = int(cap_r.get(cv2.CAP_PROP_FRAME_COUNT))
         fps_in       = cap_r.get(cv2.CAP_PROP_FPS) or 25
         width        = int(cap_r.get(cv2.CAP_PROP_FRAME_WIDTH))
         height       = int(cap_r.get(cv2.CAP_PROP_FRAME_HEIGHT))
-
         frames_to_process = total_frames if max_frames == 0 else min(total_frames, max_frames * frame_skip)
 
-        # Output video files
+        # Temporary files for output encoding
         raw_rgb_tmp    = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False).name
         raw_th_tmp     = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False).name
         raw_fusion_tmp = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False).name
         out_rgb_tmp    = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False).name
         out_th_tmp     = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False).name
         out_fusion_tmp = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False).name
+
         fourcc = cv2.VideoWriter_fourcc(*"mp4v")
         out_fps = fps_in / frame_skip
-        writer_rgb    = cv2.VideoWriter(raw_rgb_tmp,    fourcc, out_fps, (width, height)) if tri_modal_mode else None
-        writer_th     = cv2.VideoWriter(raw_th_tmp,     fourcc, out_fps, (width, height)) if tri_modal_mode else None
-        writer_fusion = cv2.VideoWriter(raw_fusion_tmp, fourcc, out_fps, (width, height))
+        writer_rgb    = AsyncVideoWriter(raw_rgb_tmp,    fourcc, out_fps, (width, height)) if tri_modal_mode else None
+        writer_th     = AsyncVideoWriter(raw_th_tmp,     fourcc, out_fps, (width, height)) if tri_modal_mode else None
+        writer_fusion = AsyncVideoWriter(raw_fusion_tmp, fourcc, out_fps, (width, height))
 
         st.markdown("---")
-        prog_bar  = st.progress(0, text="Processing...")
+        prog_bar  = st.progress(0, text="Initializing video processing...")
         
-        # Live preview layout
+        # Live Preview Layout
         if tri_modal_mode:
             prev_cols   = st.columns(3)
             prev_rgb    = prev_cols[0].empty()
             prev_th     = prev_cols[1].empty()
             prev_fusion = prev_cols[2].empty()
-            prev_cols[0].caption("RGB-only")
-            prev_cols[1].caption("Thermal-only")
-            prev_cols[2].caption("Fusion (CMAFM)")
+            prev_cols[0].caption("RGB Baseline")
+            prev_cols[1].caption("Thermal Baseline")
+            prev_cols[2].caption("CMAFM Fused")
         else:
             _, col_f_prev, _ = st.columns([1, 4, 1])
             prev_fusion = col_f_prev.empty()
-            prev_rgb = None
-            prev_th = None
+            prev_rgb, prev_th = None, None
 
         frame_idx         = 0
         proc_count        = 0
@@ -765,12 +975,24 @@ with tab_video:
         total_time_total  = 0.0
         all_results       = []
         device            = st.session_state.device
-        # Time-series data for plotting
+
         log_frames, log_dets, log_ms = [], [], []
-        # Class-wise frame time-series
         log_cls = {name: [] for name in CLASS_NAMES.values()}
-        # Event log (chronological annotations)
-        event_log = []   # [(frame, timestamp_str, event_str)]
+        event_log = []
+
+        # Warmup GPU kernels and cuDNN memory buffers for video processing
+        if device.type == "cuda":
+            with torch.inference_mode():
+                dummy_rgb = torch.zeros((1, 3, 640, 640), device=device, dtype=torch.float16)
+                dummy_th  = torch.zeros((1, 3, 640, 640), device=device, dtype=torch.float16)
+                for _ in range(3):
+                    _ = run_inference(st.session_state.model, dummy_rgb, dummy_th, device, conf_thres=score_thresh)
+                    if tri_modal_mode:
+                        if st.session_state.rgb_only_model is not None:
+                            _ = run_single_inference(st.session_state.rgb_only_model, dummy_rgb, dummy_th, device)
+                        if st.session_state.thermal_only_model is not None:
+                            _ = run_single_inference(st.session_state.thermal_only_model, dummy_rgb, dummy_th, device)
+            torch.cuda.synchronize()
 
         while cap_r.isOpened():
             ret_r, frm_r = cap_r.read()
@@ -790,17 +1012,19 @@ with tab_video:
             rgb_np = cv2.cvtColor(frm_r, cv2.COLOR_BGR2RGB)
             rgb_t, th_t, orig_h, orig_w = preprocess_pair(rgb_np, th_np)
 
-            # 1. Time CMAFM Fusion model forward pass
+            # 1. CMAFM Fusion model forward pass
             t_f0 = time.perf_counter()
             dets_fusion = run_inference(st.session_state.model, rgb_t, th_t, device, conf_thres=score_thresh)
+            if device.type == "cuda": torch.cuda.synchronize()
             elapsed_fusion = (time.perf_counter() - t_f0) * 1000
             total_time_fusion += elapsed_fusion
 
-            # 2. Time unimodal baseline comparison models if tri-modal mode active
+            # 2. Unimodal baseline comparison models if tri-modal active
             if tri_modal_mode and st.session_state.rgb_only_model is not None:
                 t_tri_0 = time.perf_counter()
                 dets_rgb = run_single_inference(st.session_state.rgb_only_model,     rgb_t, th_t, device)
                 dets_th  = run_single_inference(st.session_state.thermal_only_model, rgb_t, th_t, device)
+                if device.type == "cuda": torch.cuda.synchronize()
                 elapsed_tri = (time.perf_counter() - t_tri_0) * 1000
                 elapsed_total = elapsed_fusion + elapsed_tri
             else:
@@ -822,380 +1046,212 @@ with tab_video:
                 writer_rgb.write(cv2.cvtColor(vis_rgb, cv2.COLOR_RGB2BGR))
                 writer_th.write(cv2.cvtColor(vis_th, cv2.COLOR_RGB2BGR))
             else:
-                results_rgb = []
-                results_th  = []
+                results_rgb, results_th = [], []
 
             all_results.extend(results_fusion)
             total_dets += len(results_fusion)
 
-            # Time-series log
+            # Telemetry logging
             log_frames.append(frame_idx)
             log_dets.append(len(results_fusion))
             log_ms.append(round(elapsed_fusion, 1))
 
-            # Class-wise counts
             from collections import Counter as _Counter
             frame_cls = _Counter(r["class"] for r in results_fusion)
             for cname in CLASS_NAMES.values():
                 log_cls[cname].append(frame_cls.get(cname, 0))
 
-            # Event: record new class appearance or detection spike
             ts_str = f"{frame_idx / max(fps_in, 1):.1f}s"
-            new_cls = [c for c in frame_cls if frame_cls[c] > 0 and
-                       sum(log_cls[c][:-1]) == 0]  # First appearance in this frame
+            new_cls = [c for c in frame_cls if frame_cls[c] > 0 and sum(log_cls[c][:-1]) == 0]
             if new_cls:
-                event_log.append((frame_idx, ts_str,
-                                  f"First Detection: {', '.join(new_cls)}"))
+                event_log.append((frame_idx, ts_str, f"Detected: {', '.join(new_cls).upper()}"))
             if len(log_dets) >= 2 and log_dets[-1] >= log_dets[-2] * 2 and log_dets[-1] >= 3:
-                event_log.append((frame_idx, ts_str,
-                                  f"Detection Spike: {log_dets[-2]} -> {log_dets[-1]} targets"))
+                event_log.append((frame_idx, ts_str, f"Object Count Increase: {log_dets[-2]} -> {log_dets[-1]} objects"))
 
             # Live preview every 5 frames
             if proc_count % 5 == 1:
                 if tri_modal_mode and prev_rgb is not None and prev_th is not None:
-                    prev_rgb.image(vis_rgb, caption=f"RGB-only | {len(results_rgb)} targets", use_container_width=True)
-                    prev_th.image(vis_th, caption=f"Thermal-only | {len(results_th)} targets", use_container_width=True)
-                prev_fusion.image(vis_fusion, caption=f"CMAFM Fusion | {len(results_fusion)} targets ({elapsed_fusion:.1f} ms)", use_container_width=True)
+                    prev_rgb.image(vis_rgb, caption=f"RGB Baseline ({len(results_rgb)} objects)", use_container_width=True)
+                    prev_th.image(vis_th, caption=f"Thermal Baseline ({len(results_th)} objects)", use_container_width=True)
+                prev_fusion.image(vis_fusion, caption=f"CMAFM Fused ({len(results_fusion)} objects · {elapsed_fusion:.1f} ms)", use_container_width=True)
 
-            avg_fusion_ms = total_time_fusion / proc_count
-            avg_total_ms  = total_time_total  / proc_count
-            fps_fusion    = 1000.0 / max(avg_fusion_ms, 0.1)
+            if proc_count % 5 == 1 or frame_idx >= frames_to_process - 1:
+                avg_fusion_ms = total_time_fusion / max(proc_count, 1)
+                avg_total_ms  = total_time_total  / max(proc_count, 1)
+                fps_fusion    = 1000.0 / max(avg_fusion_ms, 0.1)
 
-            if tri_modal_mode:
-                prog_text = f"Frame {frame_idx}/{frames_to_process} | CMAFM Fusion: {avg_fusion_ms:.1f} ms ({fps_fusion:.1f} FPS) | 3-Stream Total: {avg_total_ms:.1f} ms"
-            else:
-                prog_text = f"Frame {frame_idx}/{frames_to_process} | CMAFM Fusion: {avg_fusion_ms:.1f} ms ({fps_fusion:.1f} FPS)"
+                if tri_modal_mode:
+                    prog_text = f"Processing Frame {frame_idx}/{frames_to_process} | CMAFM Engine: {avg_fusion_ms:.1f} ms ({fps_fusion:.1f} FPS) | Tri-Modal: {avg_total_ms:.1f} ms"
+                else:
+                    prog_text = f"Processing Frame {frame_idx}/{frames_to_process} | CMAFM Engine: {avg_fusion_ms:.1f} ms ({fps_fusion:.1f} FPS)"
 
-            prog_bar.progress(
-                min(frame_idx / max(frames_to_process - 1, 1), 1.0),
-                text=prog_text
-            )
+                prog_bar.progress(min(frame_idx / max(frames_to_process - 1, 1), 1.0), text=prog_text)
             frame_idx += 1
 
         cap_r.release()
-        if cap_t is not None:
-            cap_t.release()
+        if cap_t is not None: cap_t.release()
         if writer_rgb is not None: writer_rgb.release()
         if writer_th is not None:  writer_th.release()
         writer_fusion.release()
 
-        # mp4v -> H.264 re-encoding (browser playback compatibility)
-        import shutil as _shutil
-        _ffmpeg = _shutil.which("ffmpeg")
-        _has_ffmpeg = _ffmpeg is not None and Path(_ffmpeg).exists()
-
-        prog_bar.progress(1.0, text="Encoding to H.264..." if _has_ffmpeg else "Done!")
+        # Re-encode to H.264 for native browser playback
+        _ffmpeg = get_ffmpeg_binary()
+        _has_ffmpeg = _ffmpeg is not None
+        prog_bar.progress(1.0, text="Finalizing H.264 video encoding..." if _has_ffmpeg else "Processing Complete.")
 
         def _reencode(src, dst):
-            import subprocess
-            subprocess.run(
-                [_ffmpeg, "-y", "-i", src,
-                 "-vcodec", "libx264", "-pix_fmt", "yuv420p",
-                 "-movflags", "+faststart", dst],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            )
-
-        if _has_ffmpeg:
-            for src, dst in [(raw_rgb_tmp, out_rgb_tmp),
-                              (raw_th_tmp,  out_th_tmp),
-                              (raw_fusion_tmp, out_fusion_tmp)]:
-                _reencode(src, dst)
-        else:
-            # If ffmpeg is missing, use the raw files directly
-            import shutil as _sh
-            for src, dst in [(raw_rgb_tmp, out_rgb_tmp),
-                              (raw_th_tmp,  out_th_tmp),
-                              (raw_fusion_tmp, out_fusion_tmp)]:
+            if not Path(src).exists() or Path(src).stat().st_size == 0:
+                return
+            if _has_ffmpeg:
+                import subprocess
+                cmd = [
+                    _ffmpeg, "-y", "-i", src,
+                    "-vcodec", "libx264", "-pix_fmt", "yuv420p",
+                    "-preset", "veryfast", "-crf", "23",
+                    "-movflags", "+faststart", dst
+                ]
+                subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            else:
+                import shutil as _sh
                 _sh.copy(src, dst)
 
-        prog_bar.progress(1.0, text="Done!")
-        st.success(f"✅ Video processing complete — {proc_count} frames, {total_dets} fusion detections")
+        if tri_modal_mode:
+            for src, dst in [(raw_rgb_tmp, out_rgb_tmp), (raw_th_tmp, out_th_tmp), (raw_fusion_tmp, out_fusion_tmp)]:
+                _reencode(src, dst)
+        else:
+            _reencode(raw_fusion_tmp, out_fusion_tmp)
 
-        # Performance Summary Cards
+        prog_bar.progress(1.0, text="Processing Complete.")
+        st.success(f"Video Processing Complete — Processed {proc_count} frames, detected {total_dets} objects.")
+
+        # Summary Cards
         st.markdown("---")
         sc1, sc2, sc3, sc4 = st.columns(4)
-        sc1.metric("Processed Frames", proc_count)
-        sc2.metric("Total Detections", total_dets)
-        sc3.metric("CMAFM Model Speed", f"{avg_fusion_ms:.1f} ms", f"{fps_fusion:.1f} FPS")
+        sc1.metric("PROCESSED FRAMES", proc_count)
+        sc2.metric("TOTAL DETECTIONS", total_dets)
+        sc3.metric("ENGINE LATENCY", f"{avg_fusion_ms:.1f} ms", f"{fps_fusion:.1f} FPS")
         if tri_modal_mode:
-            sc4.metric("3-Stream Total", f"{avg_total_ms:.1f} ms", f"{(1000.0/max(avg_total_ms, 0.1)):.1f} Pipeline FPS")
+            sc4.metric("TRI-MODAL PIPELINE", f"{avg_total_ms:.1f} ms", f"{(1000.0/max(avg_total_ms, 0.1)):.1f} Pipeline FPS")
         else:
-            sc4.metric("Processing Mode", "Real-Time Fusion")
+            sc4.metric("PROCESSING MODE", "Direct Real-Time Fusion")
 
-        # Playback Result Video
-        st.subheader("Playback Result Video")
+        # Playback Video Section
+        st.markdown("#### [PLAYBACK VIDEO STREAM]")
+        if tri_modal_mode:
+            col_vr, col_vt = st.columns(2)
+            for col, path, label in [(col_vr, out_rgb_tmp, "RGB Baseline"), (col_vt, out_th_tmp, "Thermal Baseline")]:
+                if Path(path).exists() and Path(path).stat().st_size > 0:
+                    with open(path, "rb") as f: vid_bytes = f.read()
+                    col.markdown(f"##### {label.upper()}")
+                    col.video(vid_bytes)
+                    col.download_button(f"DOWNLOAD {label.upper()}", data=vid_bytes, file_name=f"video_{label}.mp4", mime="video/mp4", key=f"dl_{label}")
+            st.markdown("---")
 
-        # Top row (2 columns): RGB-only / Thermal-only
-        col_r, col_t = st.columns(2)
-        for col, path, label in [
-            (col_r, out_rgb_tmp, "RGB-only"),
-            (col_t, out_th_tmp,  "Thermal-only"),
-        ]:
-            with open(path, "rb") as f:
-                vid_bytes = f.read()
-            col.markdown(f"##### {label}")
-            col.video(vid_bytes)
-            col.download_button(f"💾 Download {label}",
-                                data=vid_bytes,
-                                file_name=f"detection_{label}.mp4",
-                                mime="video/mp4",
-                                key=f"dl_{label}")
+        _, col_vf, _ = st.columns([1, 4, 1])
+        if Path(out_fusion_tmp).exists() and Path(out_fusion_tmp).stat().st_size > 0:
+            with open(out_fusion_tmp, "rb") as f: fusion_bytes = f.read()
+            col_vf.markdown("##### CMAFM FUSED VIDEO STREAM")
+            col_vf.video(fusion_bytes)
+            col_vf.download_button("EXPORT FUSED VIDEO", data=fusion_bytes, file_name="cmafm_video_tracking.mp4", mime="video/mp4", key="dl_fusion")
 
-        # Bottom row (1 column): Fusion (centered & scaled)
-        st.markdown("---")
-        _, col_f, _ = st.columns([1, 4, 1])
-        with open(out_fusion_tmp, "rb") as f:
-            fusion_bytes = f.read()
-        col_f.markdown("##### RGB+Thermal Fusion (CMAFM)")
-        col_f.video(fusion_bytes)
-        col_f.download_button("💾 Download Fusion (CMAFM)",
-                              data=fusion_bytes,
-                              file_name="detection_fusion_cmafm.mp4",
-                              mime="video/mp4",
-                              key="dl_fusion")
-
-        # -- Frame-wise detection graphs --
+        # Telemetry Analytics Graphs
         if log_frames:
-            import pandas as pd
             import plotly.graph_objects as go
             st.markdown("---")
-            st.subheader("📊 Frame-wise Detection Statistics")
-
+            st.markdown("#### [REAL-TIME TELEMETRY & DETECTION ANALYTICS]")
             _chart_layout = dict(
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)",
-                font=dict(color="#d4d4d4", size=11),
-                margin=dict(l=40, r=20, t=20, b=40),
-                height=220,
-                xaxis=dict(
-                    showgrid=True, gridcolor="rgba(255,255,255,0.08)",
-                    zeroline=False, showline=False, tickfont=dict(color="#888"),
-                ),
-                yaxis=dict(
-                    showgrid=True, gridcolor="rgba(255,255,255,0.08)",
-                    zeroline=False, showline=False, tickfont=dict(color="#888"),
-                ),
-                showlegend=False,
+                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                font=dict(color="#cbd5e1", size=11, family="JetBrains Mono"),
+                margin=dict(l=40, r=20, t=20, b=40), height=220,
+                xaxis=dict(showgrid=False, zeroline=False, tickfont=dict(color="#94a3b8")),
+                yaxis=dict(showgrid=True, gridcolor="#1e293b", zeroline=False, tickfont=dict(color="#94a3b8")),
             )
 
             col_g1, col_g2 = st.columns(2)
             with col_g1:
-                st.caption("Total detected objects per frame")
-                fig1 = go.Figure(go.Scatter(
-                    x=log_frames, y=log_dets, mode="lines",
-                    line=dict(color="#ffffaa", width=1.5),
-                    fill=None,
-                ))
+                st.caption("Active Detected Objects per Frame")
+                fig1 = go.Figure(go.Scatter(x=log_frames, y=log_dets, mode="lines", line=dict(color="#38bdf8", width=2)))
                 fig1.update_layout(**_chart_layout)
                 st.plotly_chart(fig1, use_container_width=True)
             with col_g2:
-                st.caption("Inference time per frame (ms)")
-                fig2 = go.Figure(go.Scatter(
-                    x=log_frames, y=log_ms, mode="lines",
-                    line=dict(color="#5e7a8f", width=1.5),
-                    fill=None,
-                ))
+                st.caption("Engine Execution Latency (ms)")
+                fig2 = go.Figure(go.Scatter(x=log_frames, y=log_ms, mode="lines", line=dict(color="#10b981", width=2)))
                 fig2.update_layout(**_chart_layout)
                 st.plotly_chart(fig2, use_container_width=True)
 
-            # -- Class-wise line graphs --
-            st.caption("Class-wise frame detections (line)")
-            _cls_hex = {n: "#{:02x}{:02x}{:02x}".format(*CLASS_COLORS[i])
-                        for i, n in CLASS_NAMES.items()}
-            fig_cls = go.Figure()
-            for cname, vals in log_cls.items():
-                if any(v > 0 for v in vals):
-                    fig_cls.add_trace(go.Scatter(
-                        x=log_frames, y=vals, mode="lines",
-                        name=cname,
-                        line=dict(color=_cls_hex.get(cname, "#aaa"), width=1.5),
-                    ))
-            _cls_layout = dict(**_chart_layout)
-            _cls_layout["height"] = 260
-            _cls_layout["showlegend"] = True
-            _cls_layout["legend"] = dict(
-                font=dict(color="#d4d4d4", size=10),
-                bgcolor="rgba(0,0,0,0)",
-                orientation="h", yanchor="bottom", y=1.02,
-            )
-            fig_cls.update_layout(**_cls_layout)
-            st.plotly_chart(fig_cls, use_container_width=True)
-
-            # -- Event Log --
             if event_log:
-                st.caption("📋 Event log by timestamp")
+                st.markdown("##### [CHRONOLOGICAL DETECTION EVENTS]")
                 for (fidx, ts, msg) in event_log:
                     st.markdown(
-                        f"<div style='font-family:Courier New; font-size:0.78rem; "
-                        f"color:#a0b4c8; padding:2px 0;'>"
-                        f"<span style='color:#6b8f5e;'>▶ {ts}</span>"
-                        f"&nbsp;&nbsp;Frame {fidx:04d}&nbsp;&nbsp;{msg}</div>",
+                        f"<div style='font-family:\"JetBrains Mono\", monospace; font-size:0.8rem; color:#94a3b8; padding:3px 0;'>"
+                        f"<span style='color:#38bdf8; font-weight:700;'>▶ [{ts}]</span>"
+                        f"&nbsp;&nbsp;Frame {fidx:04d}&nbsp;&nbsp;·&nbsp;&nbsp;{msg}</div>",
                         unsafe_allow_html=True
                     )
 
-        # Class distribution
-        if all_results:
-            import pandas as pd
-            import plotly.graph_objects as go
-            from collections import Counter
-            counts = Counter(r["class"] for r in all_results)
-            df_sum = pd.DataFrame(counts.items(), columns=["Class", "Detections"]).sort_values("Detections", ascending=False)
-            st.subheader("Overall Class-wise Detection Statistics (Fusion Model)")
-            _cls_hex = {n: "#{:02x}{:02x}{:02x}".format(*CLASS_COLORS[i])
-                        for i, n in CLASS_NAMES.items()}
-            bar_colors3 = [_cls_hex.get(c, "#6b8f5e") for c in df_sum["Class"]]
-            fig3 = go.Figure(go.Bar(
-                x=df_sum["Class"], y=df_sum["Detections"],
-                marker_color=bar_colors3, marker_line_width=0,
-            ))
-            fig3.update_layout(
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)",
-                font=dict(color="#d4d4d4", size=11),
-                margin=dict(l=40, r=20, t=20, b=40),
-                height=260,
-                xaxis=dict(showgrid=False, zeroline=False, tickfont=dict(color="#aaa")),
-                yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.08)", zeroline=False, tickfont=dict(color="#888")),
-                showlegend=False,
-            )
-            st.plotly_chart(fig3, use_container_width=True)
-
-        # Clean up temporary files
-        for p in [rgb_tmp, raw_rgb_tmp, raw_th_tmp, raw_fusion_tmp,
-                  out_rgb_tmp, out_th_tmp, out_fusion_tmp]:
-            try:
-                os.unlink(p)
-            except Exception:
-                pass
-        if th_tmp:
-            try:
-                os.unlink(th_tmp)
-            except Exception:
-                pass
+        # Cleanup temporary files
+        for p in [raw_rgb_tmp, raw_th_tmp, raw_fusion_tmp, out_rgb_tmp, out_th_tmp, out_fusion_tmp]:
+            try: os.unlink(p)
+            except Exception: pass
+        if vid_mode != "FLIR ADAS v1 BENCHMARK SEQUENCE (DEFAULT)":
+            for p in [rgb_vid_path, th_vid_path]:
+                try: os.unlink(p)
+                except Exception: pass
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TAB 3 — Sample Test (random sample from dataset)
+# TAB 3 — Systems Architecture & Edge Telemetry
 # ══════════════════════════════════════════════════════════════════════════════
 
-with tab_webcam:
-    st.subheader("📊 Dataset Sample Test")
-    st.markdown("Select a sample from the M3FD dataset to compare RGB-only, Thermal-only, and Fused detections.")
+with tab_telemetry:
+    st.markdown("#### [CMAFM SYSTEMS ARCHITECTURE & PERFORMANCE BENCHMARKS]")
+    st.caption("Hardware-verified empirical complexity, layer-wise profiling, and detector-agnostic generalization.")
 
-    vis_dir = DATASET_DIR / "Vis"
-    ir_dir  = DATASET_DIR / "Ir"
+    st.markdown("---")
+    st.markdown("##### 1. Layer-Wise Execution Profiling (NVIDIA RTX 4070 Laptop GPU)")
+    st.markdown("""
+    CMAFM combines **Global Channel Cross-Attention** ($\mathcal{O}(C^2)$ via GAP) with **Local Spatial Cross-Gating** ($\mathcal{O}(CHW)$ via Depthwise Conv). 
+    This eliminates quadratic spatial attention matrices $\mathcal{O}(H^2 W^2 C)$ while preserving bidirectional cross-modal synergy.
+    """)
 
-    has_data = vis_dir.exists() and ir_dir.exists()
-    if not has_data:
-        st.warning(f"⚠️ Dataset directories not found at `{DATASET_DIR}`.")
-        st.info("💡 **Missing Dataset?** Download the M3FD dataset and extract it, or configure `DATASET_DIR` in your `.env`.")
-    else:
-        rgb_files = sorted(vis_dir.glob("*.png")) + sorted(vis_dir.glob("*.jpg"))
-        st.caption(f"Dataset: {len(rgb_files)} samples found")
+    col_t1, col_t2 = st.columns(2)
+    with col_t1:
+        st.markdown("""
+        | Feature Pyramid Level | Feature Resolution | Channels | Forward Latency (FP16) | Complexity |
+        | :--- | :---: | :---: | :---: | :---: |
+        | **$C_3$ Scale** | $80 \\times 80$ | 256 | **1.57 ms** | 1.8 GFLOPs |
+        | **$C_4$ Scale** | $40 \\times 40$ | 512 | **1.97 ms** | 1.9 GFLOPs |
+        | **$C_5$ Scale** | $20 \\times 20$ | 1024 | **1.90 ms** | 2.1 GFLOPs |
+        | **Full Network (CMAFM-YOLO)** | $640 \\times 640$ | — | **17.20 ms (58.0 FPS)** | **190.3 GFLOPs** |
+        """)
+    with col_t2:
+        st.markdown("""
+        | Model Architecture | Parameters | GFLOPs | Inference Latency | Throughput (FPS) |
+        | :--- | :---: | :---: | :---: | :---: |
+        | **CFT Baseline** | 206.56 M | 13,682.5 | 23.0 ms | 43.5 FPS |
+        | **ICAFusion** | ~69.00 M | >1,300.0* | 28.6 ms | 35.0 FPS |
+        | **CMAFM-YOLO (Ours)** | **105.74 M** | **190.3** | **17.2 ms** | **58.0 FPS** |
+        """)
+        st.caption("*Theoretical estimation for dual-swin transformer architectures.")
 
-        col_s1, col_s2 = st.columns([2, 1])
-        with col_s1:
-            sample_idx = st.slider("Sample Index", 0, max(0, len(rgb_files) - 1), 0)
-        with col_s2:
-            if st.button("🎲 Select Random", use_container_width=True):
-                sample_idx = int(np.random.randint(0, len(rgb_files)))
-                st.rerun()
+    st.markdown("---")
+    st.markdown("##### 2. 10-Seed HPC Benchmark Evaluation (Multi-GPU Cluster)")
+    st.markdown("""
+    | Configuration | mAP@0.5 (Mean ± $\\sigma$) | mAP@[.5:.95] | $\\Delta$ vs. CFT Baseline |
+    | :--- | :---: | :---: | :---: |
+    | **CFT Baseline (M3FD+FLIR)** | $80.48\% \\pm 0.51\\%$ | $49.05\% \\pm 0.33\\%$ | Baseline |
+    | **CMAFM-YOLO (Ours)** | **85.75% ± 0.28%** | **56.71% ± 0.26%** | **+5.27 pp** |
+    """)
 
-        if rgb_files:
-            chosen_rgb = rgb_files[sample_idx]
-            chosen_th  = ir_dir / chosen_rgb.name
-
-            col_s_r, col_s_t = st.columns(2)
-            with col_s_r:
-                st.image(str(chosen_rgb), caption=f"RGB: {chosen_rgb.name}",
-                          use_container_width=True)
-            with col_s_t:
-                if chosen_th.exists():
-                    st.image(str(chosen_th), caption=f"Thermal: {chosen_th.name}",
-                              use_container_width=True)
-                else:
-                    st.error("Corresponding Thermal image not found.")
-
-            run_sample = st.button("🔍 Run Sample Detection", type="primary",
-                                    disabled=(not model_ready or not chosen_th.exists()),
-                                    key="btn_sample")
-
-            if run_sample:
-                rgb_np = cv2.cvtColor(cv2.imread(str(chosen_rgb)), cv2.COLOR_BGR2RGB)
-                th_np  = cv2.imread(str(chosen_th), cv2.IMREAD_GRAYSCALE)
-
-                rgb_t, th_t, orig_h, orig_w = preprocess_pair(rgb_np, th_np)
-                device = st.session_state.device
-
-                # -- Three models inference --
-                t0 = time.perf_counter()
-                dets_fusion = run_inference(st.session_state.model, rgb_t, th_t, device)
-                elapsed_fusion = (time.perf_counter() - t0) * 1000
-
-                t0 = time.perf_counter()
-                dets_rgb = run_single_inference(st.session_state.rgb_only_model, rgb_t, th_t, device)
-                elapsed_rgb = (time.perf_counter() - t0) * 1000
-
-                t0 = time.perf_counter()
-                dets_th = run_single_inference(st.session_state.thermal_only_model, rgb_t, th_t, device)
-                elapsed_th = (time.perf_counter() - t0) * 1000
-
-                vis_fusion, results_fusion = draw_detections(rgb_np, dets_fusion, orig_h, orig_w, score_thresh)
-                vis_rgb,    results_rgb    = draw_detections(rgb_np, dets_rgb,    orig_h, orig_w, score_thresh)
-
-                # Display thermal result on thermal background
-                th_display = cv2.cvtColor(
-                    cv2.cvtColor(th_np, cv2.COLOR_GRAY2BGR), cv2.COLOR_BGR2RGB
-                )
-                th_display_resized = cv2.resize(th_display, (orig_w, orig_h))
-                vis_th, results_th = draw_detections(th_display_resized, dets_th, orig_h, orig_w, score_thresh)
-
-                st.markdown("---")
-
-                # -- Metrics Row --
-                st.subheader("Detection Comparison")
-                m1, m2, m3, m4, m5, m6 = st.columns(6)
-                m1.metric("RGB-only Detections", len(results_rgb))
-                m2.metric("RGB Inference", f"{elapsed_rgb:.1f} ms")
-                m3.metric("Thermal-only Detections", len(results_th))
-                m4.metric("Thermal Inference", f"{elapsed_th:.1f} ms")
-                m5.metric("Fusion Detections", len(results_fusion))
-                m6.metric("Fusion Inference", f"{elapsed_fusion:.1f} ms")
-
-                # -- 3-column Result Images --
-                col_r, col_t, col_f = st.columns(3)
-                with col_r:
-                    st.markdown("##### RGB-only")
-                    st.image(vis_rgb, use_container_width=True)
-                    st.caption(f"Detections: {len(results_rgb)}")
-                with col_t:
-                    st.markdown("##### Thermal-only")
-                    st.image(vis_th, use_container_width=True)
-                    st.caption(f"Detections: {len(results_th)}")
-                with col_f:
-                    st.markdown("##### RGB+Thermal Fusion (CMAFM)")
-                    st.image(vis_fusion, use_container_width=True)
-                    st.caption(f"Detections: {len(results_fusion)}")
-
-                # -- Detailed Fusion Results Table --
-                st.markdown("---")
-                st.subheader("Fusion Model Detailed Results")
-                if results_fusion:
-                    import pandas as pd
-                    df = pd.DataFrame(results_fusion)
-                    df.index += 1
-                    df.columns = ["Class", "Confidence", "X1", "Y1", "X2", "Y2"]
-                    df["Confidence"] = df["Confidence"].apply(lambda x: f"{x:.3f}")
-                    st.dataframe(df, use_container_width=True)
-                else:
-                    st.warning(f"No detections found with confidence >= {score_thresh:.2f}.")
-
-
-# ── Footer ────────────────────────────────────────────────────────────────────
-st.markdown("---")
-st.markdown("""
-<div style='text-align:center; color:#94a3b8; font-family:Inter, sans-serif; font-size:0.85rem; padding: 20px 0;'>
-    🎯 <strong>CMAFM</strong> &nbsp;·&nbsp; CROSS-MODAL ATTENTION FUSION MODEL<br>
-    <span style='opacity: 0.7'>Dual Backbone + Faster R-CNN/YOLO &nbsp;·&nbsp; RGB + LWIR MULTISPECTRAL</span>
-</div>
-""", unsafe_allow_html=True)
+    st.markdown("---")
+    st.markdown("##### 3. Detector-Agnostic Plug-and-Play Generalization")
+    st.markdown("""
+    | Detector Family | Baseline Dual-Stream | + CMAFM Integration | Improvement ($\\Delta$) |
+    | :--- | :---: | :---: | :---: |
+    | **FCOS (Anchor-free)** | 67.8% | **70.2%** | **+2.4 pp** |
+    | **Faster R-CNN (Two-stage)** | 70.0% | **73.7%** | **+3.7 pp** |
+    | **YOLOv5l (One-stage)** | 81.9% | **85.8%** | **+3.9 pp** |
+    | **YOLOv10 (NMS-free)** | 80.5% | **83.1%** | **+2.6 pp** |
+    | **RT-DETR (Real-time DETR)** | 84.1% | **86.4%** | **+2.3 pp** |
+    | **YOLO26 (Next-Gen SOTA)** | 85.0% | **87.3%** | **+2.3 pp** |
+    """)

@@ -47,4 +47,6 @@ scripts/apply_local_paths.py
 
 # HPC outputs and tensorboard cache
 logs/
-runs/
+runs/*
+!runs/flir_v1_rgb.mp4
+!runs/flir_v1_thermal.mp4

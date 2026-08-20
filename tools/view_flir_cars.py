@@ -6,7 +6,7 @@ from pathlib import Path
 from collections import defaultdict
 
 # --- PATHS ---
-# This matches the extracted structure on Hamming/SSD after running prepare_all.py
+# This matches the extracted structure on HPC/SSD after running prepare_all.py
 if Path(r"../data").exists():
     BASE = Path(r"../data")
 elif Path("../data").exists():

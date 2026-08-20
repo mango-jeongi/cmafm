@@ -8,22 +8,22 @@ def make_briefing():
     
     print("\n[STEP 1: ACCURACY & STABILITY]")
     print("Goal: Fill Table 3-b (Primary Benchmark)")
-    print("Command (Hamming): python tools/aggregate_final_metrics.py")
+    print("Command (HPC): python tools/aggregate_final_metrics.py")
     print("Required data: 10-seed average mAP@.5 ± std.")
     
     print("\n[STEP 2: NIGHT/DAY & CLASS-WISE]")
     print("Goal: Fill Table 6, Table 7, and Generalization Section")
-    print("Command (Hamming): sbatch slurm/run_paper_tables.sh")
+    print("Command (HPC): sbatch slurm/run_paper_tables.sh")
     print("Required data: Class-wise APs, Recall, Miss Rate for Day vs Night.")
     
     print("\n[STEP 3: EFFICIENCY]")
     print("Goal: Fill Table 3-b Efficiency / Section 4.2")
-    print("Command (Hamming): python tools/get_efficiency.py")
+    print("Command (HPC): python tools/get_efficiency.py")
     print("Required data: GFLOPs, Parameter count, Inference Latency.")
     
     print("\n[STEP 4: QUALITY CHECK]")
     print("Goal: Verify FLIR Day/Night split integrity")
-    print("Command (Hamming): python tools/analyze_night.py")
+    print("Command (HPC): python tools/analyze_night.py")
     print("Note: If 'Night' is 0, consider lowering threshold in tools/split_day_night.py")
     
     print("\n" + "="*60)

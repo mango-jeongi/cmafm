@@ -15,7 +15,7 @@ from utils.torch_utils import select_device
 # Use the best seed result from the cluster
 BEST_WEIGHTS = ROOT / "runs" / "seed_6" / "cmafm_hpc_run" / "weights" / "best.pt"
 
-# Path logic for Hamming/SSD
+# Path logic for HPC/SSD
 if Path(r"../data").exists():
     BASE = Path(r"../data")
 elif Path("../data").exists():

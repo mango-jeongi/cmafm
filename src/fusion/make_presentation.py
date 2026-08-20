@@ -65,7 +65,7 @@ def create_presentation(template_path=None, output_path="CS3315_Final_Presentati
     tf.add_paragraph().text = "• torchvision FasterRCNN: Provided a customizable backbone hook for modular design."
     tf.add_paragraph().text = "• Albumentations: High-performance data augmentation."
     tf.add_paragraph().text = "• pycocotools: Standardized mAP calculations."
-    tf.add_paragraph().text = "• SLURM: Job orchestration on Hamming HPC."
+    tf.add_paragraph().text = "• SLURM: Job orchestration on multi-GPU HPC cluster."
 
     # Slide 6: Model Architecture
     slide = add_slide("Model Architecture: CMAFM")

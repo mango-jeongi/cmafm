@@ -20,8 +20,9 @@ os.chdir(CFT_DIR)
 from models.experimental import attempt_load
 from utils.general import non_max_suppression
 
-DATA_VIS = Path("C:/Users/mingu/.datasets/M3FD/Vis")
-DATA_IR  = Path("C:/Users/mingu/.datasets/M3FD/Ir")
+DATASET_DIR = Path(os.getenv("DATASET_DIR", str(Path(REPO_ROOT) / "data" / "M3FD")))
+DATA_VIS = DATASET_DIR / "Vis" if (DATASET_DIR / "Vis").exists() else Path.home() / ".datasets" / "M3FD" / "Vis"
+DATA_IR  = DATASET_DIR / "Ir"  if (DATASET_DIR / "Ir").exists()  else Path.home() / ".datasets" / "M3FD" / "Ir"
 WEIGHTS  = Path(REPO_ROOT) / "weights" / "best.pt"
 OUT_VIDEO = Path(REPO_ROOT) / "video_demo.mp4"
 
