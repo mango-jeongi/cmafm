@@ -3,6 +3,7 @@ CMAFM Dashboard — RGB+Thermal Multispectral Object Detection
 Real-time video/image upload and object detection visualization
 """
 
+import json
 import os
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
@@ -27,6 +28,21 @@ repo_root = Path(__file__).resolve().parents[2]
 cft_dir = str(repo_root / "cft_engine")
 if cft_dir not in sys.path:
     sys.path.insert(0, cft_dir)
+
+EVALUATION_RESULTS_PATHS = {
+    "M3FD validation (6 classes)": (
+        repo_root / "jetson_deploy" / "artifacts" / "m3fd_tensorrt_map.json"
+    ),
+    "FLIR aligned test (People + Car)": (
+        repo_root / "jetson_deploy" / "artifacts" / "flir_tensorrt_map.json"
+    ),
+}
+TENSORRT_BENCHMARK_RESULTS_PATH = (
+    repo_root
+    / "jetson_deploy"
+    / "artifacts"
+    / "jetson_trt_benchmark_5w_100i.json"
+)
 
 # ── Page config ──────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -146,6 +162,15 @@ DEFAULT_CKPT = os.getenv("WEIGHTS_FASTER_RCNN", str(repo_root / "runs" / "best.p
 DEFAULT_CMAFM_YOLO_CKPT = os.getenv("WEIGHTS_CMAFM_YOLO", str(repo_root / "weights" / "best.pt"))
 DEFAULT_ABLATION_DIR = os.getenv("WEIGHTS_ABLATION_DIR", str(repo_root / "runs" / "ablation"))
 DATASET_DIR = Path(os.getenv("DATASET_DIR", "C:/Users/mingu/.datasets/M3FD"))
+TENSORRT_ENGINE = Path(
+    os.getenv(
+        "CMAFM_TENSORRT_ENGINE",
+        str(repo_root / "jetson_deploy" / "artifacts" / "cmafm_yolo_640_fp16.engine"),
+    )
+)
+TENSORRT_AVAILABLE = TENSORRT_ENGINE.is_file()
+DEMO_RGB_VIDEO = repo_root / "videos" / "flir_v1_rgb.mp4"
+DEMO_THERMAL_VIDEO = repo_root / "videos" / "flir_v1_thermal.mp4"
 
 # ── Session state ─────────────────────────────────────────────────────────────
 if "model" not in st.session_state:
@@ -164,13 +189,76 @@ if "thermal_only_model" not in st.session_state:
 # Helper Functions
 # ══════════════════════════════════════════════════════════════════════════════
 
+class TensorRTCMAFMAdapter:
+    """Expose the Jetson TensorRT engine through the dashboard detector interface."""
+
+    is_tensorrt = True
+
+    def __init__(self, engine_path: str):
+        from jetson_deploy.src.infer_tensorrt import (
+            DEFAULT_WARMUP_ITERATIONS,
+            TensorRTSession,
+        )
+
+        self.session = TensorRTSession(Path(engine_path))
+        self.default_warmup_iterations = DEFAULT_WARMUP_ITERATIONS
+        self.last_inference_ms = 0.0
+
+    def _inputs(self, rgb_t: torch.Tensor, th_t: torch.Tensor):
+        rgb = np.ascontiguousarray(
+            rgb_t.detach().cpu().numpy(), dtype=self.session.input_dtype
+        )
+        thermal = np.ascontiguousarray(
+            th_t.detach().cpu().numpy(), dtype=self.session.input_dtype
+        )
+        return rgb, thermal
+
+    def warmup(
+        self,
+        rgb_t: torch.Tensor,
+        th_t: torch.Tensor,
+        iterations: int | None = None,
+    ) -> None:
+        """Run discarded TensorRT passes immediately before a timed sequence."""
+        rgb, thermal = self._inputs(rgb_t, th_t)
+        count = self.default_warmup_iterations if iterations is None else iterations
+        for _ in range(count):
+            self.session.infer(rgb, thermal)
+
+    def detect(self, rgb_t: torch.Tensor, th_t: torch.Tensor):
+        from jetson_deploy.src.postprocess import non_max_suppression
+
+        rgb, thermal = self._inputs(rgb_t, th_t)
+        started = time.perf_counter()
+        outputs = self.session.infer(rgb, thermal)
+        self.last_inference_ms = (time.perf_counter() - started) * 1000
+        detections = non_max_suppression(
+            self.session.prediction_output(outputs),
+            confidence_threshold=0.1,
+            iou_threshold=0.45,
+        )
+        return {
+            "boxes": torch.from_numpy(detections[:, :4].copy()),
+            "scores": torch.from_numpy(detections[:, 4].copy()),
+            "labels": torch.from_numpy(detections[:, 5].astype(np.int64) + 1),
+        }
+
+
 @st.cache_resource(show_spinner="Loading model...")
-def load_model_cached(ckpt_path: str, device_str: str, model_type: str = "Faster R-CNN (CMAFM)"):
+def load_model_cached(
+    ckpt_path: str,
+    device_str: str,
+    model_type: str = "Faster R-CNN (CMAFM)",
+    inference_backend: str = "PyTorch",
+):
+    if inference_backend == "TensorRT":
+        return TensorRTCMAFMAdapter(ckpt_path), None, torch.device("cpu")
+
     from config import Config
     from model import build_model
 
     device = torch.device(device_str)
-    
+
     if model_type == "CMAFM-YOLO":
         import sys
         repo_root = Path(__file__).resolve().parents[2]
@@ -263,6 +351,9 @@ def preprocess_pair(rgb_np: np.ndarray, thermal_np: np.ndarray):
 
 @torch.no_grad()
 def run_inference(model, rgb_t, th_t, device):
+    if getattr(model, "is_tensorrt", False):
+        return model.detect(rgb_t, th_t)
+
     if st.session_state.get("model_type", "Faster R-CNN (CMAFM)") == "CMAFM-YOLO":
         import sys
         repo_root = Path(__file__).resolve().parents[2]
@@ -377,6 +468,8 @@ def run_three_way_detection(rgb_np, th_np, score_thresh, thermal_source=""):
     t0 = time.perf_counter()
     dets_fusion = run_inference(st.session_state.model, rgb_t, th_t, device)
     elapsed_fusion = (time.perf_counter() - t0) * 1000
+    if getattr(st.session_state.model, "is_tensorrt", False):
+        elapsed_fusion = st.session_state.model.last_inference_ms
 
     vis_rgb,    results_rgb    = draw_detections(rgb_np, dets_rgb,    orig_h, orig_w, score_thresh)
     vis_fusion, results_fusion = draw_detections(rgb_np, dets_fusion, orig_h, orig_w, score_thresh)
@@ -477,9 +570,19 @@ with st.sidebar:
     model_type = st.selectbox(
         "Model Architecture",
         ["Faster R-CNN (CMAFM)", "CMAFM-YOLO"],
+        index=1 if TENSORRT_AVAILABLE else 0,
         help="Select the fusion model architecture to deploy."
     )
     st.session_state.model_type = model_type
+
+    inference_backend = (
+        "TensorRT"
+        if model_type == "CMAFM-YOLO" and TENSORRT_AVAILABLE
+        else "PyTorch"
+    )
+    st.session_state.inference_backend = inference_backend
+    if inference_backend == "TensorRT":
+        st.success("TensorRT FP16 backend available on Jetson")
     
     # Invalidate cache when model selection changes
     if "prev_model_type" in st.session_state and st.session_state.prev_model_type != model_type:
@@ -488,6 +591,8 @@ with st.sidebar:
     
     if model_type == "Faster R-CNN (CMAFM)":
         default_path = DEFAULT_CKPT
+    elif inference_backend == "TensorRT":
+        default_path = str(TENSORRT_ENGINE)
     else:
         default_path = DEFAULT_CMAFM_YOLO_CKPT
 
@@ -533,7 +638,9 @@ with st.sidebar:
             st.error("Checkpoint file not found.")
         else:
             with st.spinner("Loading model..."):
-                model, cfg, device = load_model_cached(ckpt_path, device_str, model_type)
+                model, cfg, device = load_model_cached(
+                    ckpt_path, device_str, model_type, inference_backend
+                )
                 st.session_state.model  = model
                 st.session_state.device = device
                 st.session_state.cfg    = cfg
@@ -595,7 +702,12 @@ if not model_ready:
     st.warning("⚠️ System standby — Click **Start System** in the sidebar to activate.")
 
 # ── Mode selection ──
-tab_image, tab_video, tab_webcam = st.tabs(["📡 Image Detection", "📹 Video Tracking", "🎖️ Sample Test"])
+tab_image, tab_video, tab_webcam, tab_evaluation = st.tabs([
+    "📡 Image Detection",
+    "📹 Video Tracking",
+    "🎖️ Sample Test",
+    "📈 Model Evaluation",
+])
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -640,6 +752,16 @@ with tab_image:
 # ══════════════════════════════════════════════════════════════════════════════
 
 with tab_video:
+    demo_available = DEMO_RGB_VIDEO.is_file() and DEMO_THERMAL_VIDEO.is_file()
+    use_demo_videos = st.checkbox(
+        "Use bundled FLIR video pair",
+        value=False,
+        disabled=not demo_available,
+        help="Use cmafm/videos/flir_v1_rgb.mp4 and flir_v1_thermal.mp4 on this host.",
+    )
+    if use_demo_videos:
+        st.caption(f"RGB: {DEMO_RGB_VIDEO.name} | Thermal: {DEMO_THERMAL_VIDEO.name}")
+
     st.subheader("📹 Dynamic Target Tracking & Detection")
 
     st.markdown("> ⚠️ **Both videos must have the same number of frames and resolution.**")
@@ -659,17 +781,26 @@ with tab_video:
         frame_skip = st.number_input("Frame skip (process 1 in every N frames)",
                                       min_value=1, max_value=30, value=1, step=1)
 
-    vid_ready = model_ready and rgb_vid is not None and th_vid is not None
+    vid_ready = model_ready and (
+        use_demo_videos or (rgb_vid is not None and th_vid is not None)
+    )
     run_vid = st.button("🎬 Start Video Detection", type="primary",
                          disabled=not vid_ready,
                          key="btn_vid")
 
-    if run_vid and rgb_vid and th_vid:
+    if run_vid and vid_ready:
         # Save RGB/Thermal to temp files
-        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as rf:
-            rf.write(rgb_vid.read()); rgb_tmp = rf.name
-        with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tf:
-            tf.write(th_vid.read()); th_tmp = tf.name
+        temporary_inputs = []
+        if use_demo_videos:
+            rgb_tmp = str(DEMO_RGB_VIDEO)
+            th_tmp = str(DEMO_THERMAL_VIDEO)
+        else:
+            with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as rf:
+                rf.write(rgb_vid.read()); rgb_tmp = rf.name
+                temporary_inputs.append(rgb_tmp)
+            with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tf:
+                tf.write(th_vid.read()); th_tmp = tf.name
+                temporary_inputs.append(th_tmp)
 
         cap_r = cv2.VideoCapture(rgb_tmp)
         cap_t = cv2.VideoCapture(th_tmp) if th_tmp else None
@@ -689,7 +820,9 @@ with tab_video:
         out_rgb_tmp    = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False).name
         out_th_tmp     = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False).name
         out_fusion_tmp = tempfile.NamedTemporaryFile(suffix=".mp4", delete=False).name
-        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+        fourcc = cv2.VideoWriter_fourcc(
+            *("avc1" if st.session_state.get("inference_backend") == "TensorRT" else "mp4v")
+        )
         out_fps = fps_in / frame_skip
         writer_rgb    = cv2.VideoWriter(raw_rgb_tmp,    fourcc, out_fps, (width, height))
         writer_th     = cv2.VideoWriter(raw_th_tmp,     fourcc, out_fps, (width, height))
@@ -740,8 +873,12 @@ with tab_video:
             t0 = time.perf_counter()
             dets_rgb    = run_single_inference(st.session_state.rgb_only_model,     rgb_t, th_t, device)
             dets_th     = run_single_inference(st.session_state.thermal_only_model, rgb_t, th_t, device)
+            if proc_count == 0 and getattr(st.session_state.model, "is_tensorrt", False):
+                st.session_state.model.warmup(rgb_t, th_t)
             dets_fusion = run_inference(st.session_state.model,                     rgb_t, th_t, device)
             elapsed = (time.perf_counter() - t0) * 1000
+            if getattr(st.session_state.model, "is_tensorrt", False):
+                elapsed = st.session_state.model.last_inference_ms
             total_time += elapsed
 
             vis_rgb,    results_rgb    = draw_detections(rgb_np, dets_rgb,    orig_h, orig_w, score_thresh)
@@ -972,15 +1109,10 @@ with tab_video:
             st.plotly_chart(fig3, use_container_width=True)
 
         # Clean up temporary files
-        for p in [rgb_tmp, raw_rgb_tmp, raw_th_tmp, raw_fusion_tmp,
+        for p in [*temporary_inputs, raw_rgb_tmp, raw_th_tmp, raw_fusion_tmp,
                   out_rgb_tmp, out_th_tmp, out_fusion_tmp]:
             try:
                 os.unlink(p)
-            except Exception:
-                pass
-        if th_tmp:
-            try:
-                os.unlink(th_tmp)
             except Exception:
                 pass
 
@@ -1042,6 +1174,8 @@ with tab_webcam:
                 t0 = time.perf_counter()
                 dets_fusion = run_inference(st.session_state.model, rgb_t, th_t, device)
                 elapsed_fusion = (time.perf_counter() - t0) * 1000
+                if getattr(st.session_state.model, "is_tensorrt", False):
+                    elapsed_fusion = st.session_state.model.last_inference_ms
 
                 t0 = time.perf_counter()
                 dets_rgb = run_single_inference(st.session_state.rgb_only_model, rgb_t, th_t, device)
@@ -1100,6 +1234,162 @@ with tab_webcam:
                     st.dataframe(df, use_container_width=True)
                 else:
                     st.warning(f"No detections found with confidence >= {score_thresh:.2f}.")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TAB 4 — Ground-truth model evaluation
+# ══════════════════════════════════════════════════════════════════════════════
+
+with tab_evaluation:
+    st.subheader("📈 TensorRT FP16 Model Evaluation")
+    st.markdown(
+        "Ground-truth accuracy measurements for the optimized CMAFM-YOLO "
+        "TensorRT engine. Select a dataset to view its independent evaluation."
+    )
+
+    evaluation_label = st.selectbox(
+        "Evaluation Dataset",
+        list(EVALUATION_RESULTS_PATHS),
+        key="evaluation_dataset",
+    )
+    evaluation_results_path = EVALUATION_RESULTS_PATHS[evaluation_label]
+
+    if not evaluation_results_path.is_file():
+        st.warning(
+            "Evaluation results are not available. Run the TensorRT mAP evaluator "
+            f"to create `{evaluation_results_path}`."
+        )
+    else:
+        try:
+            evaluation = json.loads(evaluation_results_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            st.error(f"Unable to load evaluation results: {exc}")
+        else:
+            if evaluation["dataset"] == "FLIR Aligned":
+                st.info(
+                    "FLIR is evaluated on its official test split using the repository's "
+                    "mapping **person → People** and **car → Car**. Bicycle and dog are "
+                    "excluded because this checkpoint has no matching output classes."
+                )
+
+            metric_map50, metric_map5095, metric_precision, metric_recall = st.columns(4)
+            metric_map50.metric("mAP @ 0.5", f"{evaluation['map50'] * 100:.2f}%")
+            metric_map5095.metric(
+                "mAP @ 0.5:0.95", f"{evaluation['map50_95'] * 100:.2f}%"
+            )
+            metric_precision.metric(
+                "Mean Precision", f"{evaluation['mean_precision'] * 100:.2f}%"
+            )
+            metric_recall.metric(
+                "Mean Recall", f"{evaluation['mean_recall'] * 100:.2f}%"
+            )
+
+            st.markdown("---")
+            detail_images, detail_boxes, detail_size, detail_backend = st.columns(4)
+            detail_images.metric("Evaluation Images", f"{evaluation['images']:,}")
+            detail_boxes.metric(
+                "Ground-Truth Boxes", f"{evaluation['ground_truth_boxes']:,}"
+            )
+            detail_size.metric(
+                "Input Resolution",
+                f"{evaluation['image_size']} × {evaluation['image_size']}",
+            )
+            detail_backend.metric("Inference Backend", evaluation["backend"])
+
+            st.subheader("Per-Class Average Precision")
+            import pandas as pd
+
+            class_rows = []
+            for class_name, values in evaluation["per_class"].items():
+                class_rows.append({
+                    "Class": class_name,
+                    "Ground-Truth Boxes": values["ground_truth_boxes"],
+                    "Precision": f"{values['precision'] * 100:.2f}%",
+                    "Recall": f"{values['recall'] * 100:.2f}%",
+                    "AP @ 0.5": f"{values['ap50'] * 100:.2f}%",
+                    "AP @ 0.5:0.95": f"{values['ap50_95'] * 100:.2f}%",
+                })
+            st.dataframe(pd.DataFrame(class_rows), use_container_width=True, hide_index=True)
+
+            with st.expander("Evaluation protocol"):
+                if evaluation["dataset"] == "FLIR Aligned":
+                    split_description = "Official FLIR aligned test split"
+                else:
+                    split_description = (
+                        "Deterministic 20% M3FD validation split "
+                        f"(seed {evaluation['split_seed']})"
+                    )
+                evaluated_classes = ", ".join(evaluation["per_class"])
+                st.markdown(
+                    f"""
+                    - **Dataset:** {evaluation['dataset']}
+                    - **Split:** {split_description}
+                    - **Classes included in mAP mean:** {evaluated_classes}
+                    - **Confidence threshold:** {evaluation['confidence_threshold']}
+                    - **NMS IoU threshold:** {evaluation['nms_iou_threshold']}
+                    - **IoU thresholds for mAP:** 0.50 to 0.95 in 0.05 increments
+                    - **Detections after NMS:** {evaluation['detections_after_nms']:,}
+                    - **Mean TensorRT inference:** {evaluation['mean_inference_ms']:.2f} ms/image
+                    - **Mean NMS:** {evaluation['mean_nms_ms']:.2f} ms/image
+                    """
+                )
+
+    st.markdown("---")
+    st.subheader("Jetson TensorRT Invocation Benchmark")
+    if not TENSORRT_BENCHMARK_RESULTS_PATH.is_file():
+        st.warning(
+            "Jetson runtime results are not available. Run the TensorRT benchmark "
+            f"to create `{TENSORRT_BENCHMARK_RESULTS_PATH}`."
+        )
+    else:
+        try:
+            benchmark = json.loads(
+                TENSORRT_BENCHMARK_RESULTS_PATH.read_text(encoding="utf-8")
+            )
+        except (OSError, json.JSONDecodeError) as exc:
+            st.error(f"Unable to load Jetson runtime results: {exc}")
+        else:
+            runtime_table = "\n".join([
+                "| Metric | Result |",
+                "|---|---:|",
+                (
+                    "| Mean latency | "
+                    f"**{benchmark['mean_ms']:.2f} ± "
+                    f"{benchmark['population_std_ms']:.2f} ms** |"
+                ),
+                f"| Median | **{benchmark['median_ms']:.2f} ms** |",
+                (
+                    "| p95 / p99 | "
+                    f"**{benchmark['p95_ms']:.2f} / "
+                    f"{benchmark['p99_ms']:.2f} ms** |"
+                ),
+                (
+                    "| Min / max | "
+                    f"**{benchmark['min_ms']:.2f} / "
+                    f"{benchmark['max_ms']:.2f} ms** |"
+                ),
+                (
+                    "| Reciprocal rate | "
+                    f"**{benchmark['reciprocal_fps']:.2f} FPS** |"
+                ),
+            ])
+            st.markdown(runtime_table)
+            st.caption(
+                f"{benchmark['warmup_passes']} discarded warmup passes followed "
+                f"immediately by {benchmark['timed_invocations']} timed invocations. "
+                "This is isolated TensorRT invocation latency, not end-to-end video FPS."
+            )
+
+            with st.expander("Runtime benchmark protocol"):
+                excluded = ", ".join(benchmark["excluded"])
+                st.markdown(
+                    "\n".join([
+                        f"- **Input:** {benchmark['input_source']}",
+                        f"- **Timed region:** {benchmark['timing_scope']}",
+                        f"- **Excluded:** {excluded}",
+                        "- **Standard deviation:** population SD across the 100 timed invocations",
+                    ])
+                )
 
 
 # ── Footer ────────────────────────────────────────────────────────────────────

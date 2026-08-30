@@ -1,0 +1,5 @@
+# TensorRT is supplied by JetPack. OpenCV should be installed with apt.
+numpy<2.0
+cuda-python>=12,<13
+streamlit>=1.32,<2
+plotly>=5,<7
