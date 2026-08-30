@@ -18,6 +18,7 @@ pyyaml
 setuptools<70.0.0
 tensorboard
 streamlit
+plotly>=5,<7
 albumentations
 pycocotools
 thop

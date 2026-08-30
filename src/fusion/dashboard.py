@@ -7,6 +7,10 @@ WACV 2027 Applications Track — Anonymous Submission #1669
 import os
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
+import json
+import pandas as pd
+import plotly.graph_objects as go
+
 import sys
 import time
 import queue
@@ -38,6 +42,28 @@ try:
     from utils.general import non_max_suppression
 except ImportError:
     non_max_suppression = None
+
+EVALUATION_RESULTS_PATHS = {
+    "M3FD validation (6 classes)": (
+        repo_root / "jetson_deploy" / "artifacts" / "m3fd_tensorrt_map.json"
+    ),
+    "FLIR aligned test (People + Car)": (
+        repo_root / "jetson_deploy" / "artifacts" / "flir_tensorrt_map.json"
+    ),
+}
+TENSORRT_BENCHMARK_RESULTS_PATH = (
+    repo_root
+    / "jetson_deploy"
+    / "artifacts"
+    / "jetson_trt_benchmark_5w_100i.json"
+)
+TENSORRT_ENGINE = Path(
+    os.getenv(
+        "CMAFM_TENSORRT_ENGINE",
+        str(repo_root / "jetson_deploy" / "artifacts" / "cmafm_yolo_640_fp16.engine"),
+    )
+)
+TENSORRT_AVAILABLE = TENSORRT_ENGINE.is_file()
 
 # ── Page Config ──────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -233,6 +259,61 @@ if "thermal_only_model" not in st.session_state:
 # Core Pipeline & Model Management
 # ══════════════════════════════════════════════════════════════════════════════
 
+class TensorRTCMAFMAdapter:
+    """Expose the Jetson TensorRT engine through the dashboard detector interface."""
+
+    is_tensorrt = True
+
+    def __init__(self, engine_path: str):
+        from jetson_deploy.src.infer_tensorrt import (
+            DEFAULT_WARMUP_ITERATIONS,
+            TensorRTSession,
+        )
+
+        self.session = TensorRTSession(Path(engine_path))
+        self.default_warmup_iterations = DEFAULT_WARMUP_ITERATIONS
+        self.last_inference_ms = 0.0
+
+    def _inputs(self, rgb_t: torch.Tensor, th_t: torch.Tensor):
+        rgb = np.ascontiguousarray(
+            rgb_t.detach().cpu().numpy(), dtype=self.session.input_dtype
+        )
+        thermal = np.ascontiguousarray(
+            th_t.detach().cpu().numpy(), dtype=self.session.input_dtype
+        )
+        return rgb, thermal
+
+    def warmup(
+        self,
+        rgb_t: torch.Tensor,
+        th_t: torch.Tensor,
+        iterations: int | None = None,
+    ) -> None:
+        """Run discarded TensorRT passes immediately before a timed sequence."""
+        rgb, thermal = self._inputs(rgb_t, th_t)
+        count = self.default_warmup_iterations if iterations is None else iterations
+        for _ in range(count):
+            self.session.infer(rgb, thermal)
+
+    def detect(self, rgb_t: torch.Tensor, th_t: torch.Tensor):
+        from jetson_deploy.src.postprocess import non_max_suppression
+
+        rgb, thermal = self._inputs(rgb_t, th_t)
+        started = time.perf_counter()
+        outputs = self.session.infer(rgb, thermal)
+        self.last_inference_ms = (time.perf_counter() - started) * 1000
+        detections = non_max_suppression(
+            self.session.prediction_output(outputs),
+            confidence_threshold=0.1,
+            iou_threshold=0.45,
+        )
+        return {
+            "boxes": torch.from_numpy(detections[:, :4].copy()),
+            "scores": torch.from_numpy(detections[:, 4].copy()),
+            "labels": torch.from_numpy(detections[:, 5].astype(np.int64) + 1),
+        }
+
+
 class AsyncVideoWriter:
     """Asynchronous background video writer to prevent disk I/O from blocking GPU inference."""
     def __init__(self, filepath, fourcc, fps, dimensions):
@@ -283,7 +364,9 @@ def get_ffmpeg_binary():
 
 
 @st.cache_resource(show_spinner=False)
-def load_model_cached(ckpt_path: str, device_str: str, model_type: str = "CMAFM-YOLO"):
+def load_model_cached(ckpt_path: str, device_str: str, model_type: str = "CMAFM-YOLO", inference_backend: str = "PyTorch"):
+    if inference_backend == "TensorRT" or model_type == "TensorRT (FP16 Engine)":
+        return TensorRTCMAFMAdapter(ckpt_path), None, torch.device("cpu")
     from config import Config
     from model import build_model
 
@@ -409,6 +492,9 @@ def preprocess_pair(rgb_np: np.ndarray, thermal_np: np.ndarray):
 
 @torch.inference_mode()
 def run_inference(model, rgb_t, th_t, device, conf_thres=0.25, iou_thres=0.45):
+    if getattr(model, "is_tensorrt", False):
+        return model.detect(rgb_t, th_t)
+
     target_dtype = torch.float16 if device.type == "cuda" else torch.float32
     rgb_t = rgb_t.to(device, dtype=target_dtype, non_blocking=True)
     th_t  = th_t.to(device, dtype=target_dtype, non_blocking=True)
@@ -635,10 +721,16 @@ with st.sidebar:
 
     # ── Model Selection ──
     st.markdown("#### [MODEL CONFIGURATION]")
+    model_options = ["CMAFM-YOLO", "Faster R-CNN (CMAFM)"]
+    if TENSORRT_AVAILABLE:
+        model_options.append("TensorRT (FP16 Engine)")
+    else:
+        model_options.append("TensorRT (FP16 Engine)")
+
     model_type = st.selectbox(
         "Architecture",
-        ["CMAFM-YOLO", "Faster R-CNN (CMAFM)"],
-        help="Select fusion architecture. CMAFM-YOLO is recommended for real-time video tracking."
+        model_options,
+        help="Select fusion architecture. CMAFM-YOLO / TensorRT is recommended for real-time video tracking."
     )
     st.session_state.model_type = model_type
     
@@ -648,7 +740,12 @@ with st.sidebar:
         st.session_state.model = None
     st.session_state.prev_model_type = model_type
     
-    default_path = DEFAULT_CMAFM_YOLO_CKPT if model_type == "CMAFM-YOLO" else DEFAULT_CKPT
+    if model_type == "TensorRT (FP16 Engine)":
+        default_path = str(TENSORRT_ENGINE)
+    elif model_type == "CMAFM-YOLO":
+        default_path = DEFAULT_CMAFM_YOLO_CKPT
+    else:
+        default_path = DEFAULT_CKPT
 
     use_default_ckpt = st.checkbox(
         f"Use verified weights ({Path(default_path).name})",
@@ -663,7 +760,12 @@ with st.sidebar:
             st.error("Checkpoint not found at default location.")
             ckpt_path = st.text_input("Manual Path", value="", key=f"ckpt_manual_{model_type}")
     else:
-        rel_default = "weights/best.pt" if model_type == "CMAFM-YOLO" else "runs/best.pth"
+        if model_type == "TensorRT (FP16 Engine)":
+            rel_default = "jetson_deploy/artifacts/cmafm_yolo_640_fp16.engine"
+        elif model_type == "CMAFM-YOLO":
+            rel_default = "weights/best.pt"
+        else:
+            rel_default = "runs/best.pth"
         ckpt_path = st.text_input("Checkpoint Path", value=rel_default, key=f"ckpt_custom_{model_type}")
 
     if ckpt_path:
@@ -695,7 +797,8 @@ with st.sidebar:
             st.error("Checkpoint file not found.")
         else:
             with st.spinner("Initializing multispectral detection engine..."):
-                model, cfg, device = load_model_cached(ckpt_path, device_str, model_type)
+                backend = "TensorRT" if model_type == "TensorRT (FP16 Engine)" else "PyTorch"
+                model, cfg, device = load_model_cached(ckpt_path, device_str, model_type, inference_backend=backend)
                 st.session_state.model  = model
                 st.session_state.device = device
                 st.session_state.cfg    = cfg
@@ -779,10 +882,11 @@ model_ready = st.session_state.model is not None
 if not model_ready:
     st.warning("STATUS: STANDBY — Click 'START SYSTEM' in the sidebar to activate the detection engine.")
 
-tab_image, tab_video, tab_telemetry = st.tabs([
+tab_image, tab_video, tab_telemetry, tab_evaluation = st.tabs([
     "IMAGE DETECTION",
     "VIDEO TRACKING",
-    "SYSTEM ARCHITECTURE & BENCHMARKS"
+    "SYSTEM ARCHITECTURE & BENCHMARKS",
+    "📈 Model Evaluation",
 ])
 
 
@@ -980,8 +1084,12 @@ with tab_video:
         log_cls = {name: [] for name in CLASS_NAMES.values()}
         event_log = []
 
-        # Warmup GPU kernels and cuDNN memory buffers for video processing
-        if device.type == "cuda":
+        # Warmup GPU kernels / cuDNN memory buffers / TensorRT for video processing
+        if getattr(st.session_state.model, "is_tensorrt", False):
+            dummy_rgb = torch.zeros((1, 3, 640, 640), dtype=torch.float32)
+            dummy_th  = torch.zeros((1, 3, 640, 640), dtype=torch.float32)
+            st.session_state.model.warmup(dummy_rgb, dummy_th)
+        elif device.type == "cuda":
             with torch.inference_mode():
                 dummy_rgb = torch.zeros((1, 3, 640, 640), device=device, dtype=torch.float16)
                 dummy_th  = torch.zeros((1, 3, 640, 640), device=device, dtype=torch.float16)
@@ -1017,6 +1125,8 @@ with tab_video:
             dets_fusion = run_inference(st.session_state.model, rgb_t, th_t, device, conf_thres=score_thresh)
             if device.type == "cuda": torch.cuda.synchronize()
             elapsed_fusion = (time.perf_counter() - t_f0) * 1000
+            if getattr(st.session_state.model, "is_tensorrt", False):
+                elapsed_fusion = st.session_state.model.last_inference_ms
             total_time_fusion += elapsed_fusion
 
             # 2. Unimodal baseline comparison models if tri-modal active
@@ -1209,23 +1319,23 @@ with tab_telemetry:
 
     st.markdown("---")
     st.markdown("##### 1. Layer-Wise Execution Profiling (NVIDIA RTX 4070 Laptop GPU)")
-    st.markdown("""
+    st.markdown(r"""
     CMAFM combines **Global Channel Cross-Attention** ($\mathcal{O}(C^2)$ via GAP) with **Local Spatial Cross-Gating** ($\mathcal{O}(CHW)$ via Depthwise Conv). 
     This eliminates quadratic spatial attention matrices $\mathcal{O}(H^2 W^2 C)$ while preserving bidirectional cross-modal synergy.
     """)
 
     col_t1, col_t2 = st.columns(2)
     with col_t1:
-        st.markdown("""
+        st.markdown(r"""
         | Feature Pyramid Level | Feature Resolution | Channels | Forward Latency (FP16) | Complexity |
         | :--- | :---: | :---: | :---: | :---: |
-        | **$C_3$ Scale** | $80 \\times 80$ | 256 | **1.57 ms** | 1.8 GFLOPs |
-        | **$C_4$ Scale** | $40 \\times 40$ | 512 | **1.97 ms** | 1.9 GFLOPs |
-        | **$C_5$ Scale** | $20 \\times 20$ | 1024 | **1.90 ms** | 2.1 GFLOPs |
-        | **Full Network (CMAFM-YOLO)** | $640 \\times 640$ | — | **17.20 ms (58.0 FPS)** | **190.3 GFLOPs** |
+        | **$C_3$ Scale** | $80 \times 80$ | 256 | **1.57 ms** | 1.8 GFLOPs |
+        | **$C_4$ Scale** | $40 \times 40$ | 512 | **1.97 ms** | 1.9 GFLOPs |
+        | **$C_5$ Scale** | $20 \times 20$ | 1024 | **1.90 ms** | 2.1 GFLOPs |
+        | **Full Network (CMAFM-YOLO)** | $640 \times 640$ | — | **17.20 ms (58.0 FPS)** | **190.3 GFLOPs** |
         """)
     with col_t2:
-        st.markdown("""
+        st.markdown(r"""
         | Model Architecture | Parameters | GFLOPs | Inference Latency | Throughput (FPS) |
         | :--- | :---: | :---: | :---: | :---: |
         | **CFT Baseline** | 206.56 M | 13,682.5 | 23.0 ms | 43.5 FPS |
@@ -1236,17 +1346,17 @@ with tab_telemetry:
 
     st.markdown("---")
     st.markdown("##### 2. 10-Seed HPC Benchmark Evaluation (Multi-GPU Cluster)")
-    st.markdown("""
-    | Configuration | mAP@0.5 (Mean ± $\\sigma$) | mAP@[.5:.95] | $\\Delta$ vs. CFT Baseline |
+    st.markdown(r"""
+    | Configuration | mAP@0.5 (Mean ± $\sigma$) | mAP@[.5:.95] | $\Delta$ vs. CFT Baseline |
     | :--- | :---: | :---: | :---: |
-    | **CFT Baseline (M3FD+FLIR)** | $80.48\% \\pm 0.51\\%$ | $49.05\% \\pm 0.33\\%$ | Baseline |
+    | **CFT Baseline (M3FD+FLIR)** | $80.48\% \pm 0.51\%$ | $49.05\% \pm 0.33\%$ | Baseline |
     | **CMAFM-YOLO (Ours)** | **85.75% ± 0.28%** | **56.71% ± 0.26%** | **+5.27 pp** |
     """)
 
     st.markdown("---")
     st.markdown("##### 3. Detector-Agnostic Plug-and-Play Generalization")
-    st.markdown("""
-    | Detector Family | Baseline Dual-Stream | + CMAFM Integration | Improvement ($\\Delta$) |
+    st.markdown(r"""
+    | Detector Family | Baseline Dual-Stream | + CMAFM Integration | Improvement ($\Delta$) |
     | :--- | :---: | :---: | :---: |
     | **FCOS (Anchor-free)** | 67.8% | **70.2%** | **+2.4 pp** |
     | **Faster R-CNN (Two-stage)** | 70.0% | **73.7%** | **+3.7 pp** |
@@ -1255,3 +1365,158 @@ with tab_telemetry:
     | **RT-DETR (Real-time DETR)** | 84.1% | **86.4%** | **+2.3 pp** |
     | **YOLO26 (Next-Gen SOTA)** | 85.0% | **87.3%** | **+2.3 pp** |
     """)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# TAB 4 — Ground-truth Model Evaluation & Jetson Edge Benchmarks
+# ══════════════════════════════════════════════════════════════════════════════
+
+with tab_evaluation:
+    st.subheader("📈 TensorRT FP16 Model Evaluation")
+    st.markdown(
+        "Ground-truth accuracy measurements for the optimized CMAFM-YOLO "
+        "TensorRT engine. Select a dataset to view its independent evaluation."
+    )
+
+    evaluation_label = st.selectbox(
+        "Evaluation Dataset",
+        list(EVALUATION_RESULTS_PATHS),
+        key="evaluation_dataset",
+    )
+    evaluation_results_path = EVALUATION_RESULTS_PATHS[evaluation_label]
+
+    if not evaluation_results_path.is_file():
+        st.warning(
+            "Evaluation results are not available. Run the TensorRT mAP evaluator "
+            f"to create `{evaluation_results_path}`."
+        )
+    else:
+        try:
+            evaluation = json.loads(evaluation_results_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            st.error(f"Unable to load evaluation results: {exc}")
+        else:
+            if evaluation["dataset"] == "FLIR Aligned":
+                st.info(
+                    "FLIR is evaluated on its official test split using the repository's "
+                    "mapping **person → People** and **car → Car**. Bicycle and dog are "
+                    "excluded because this checkpoint has no matching output classes."
+                )
+
+            metric_map50, metric_map5095, metric_precision, metric_recall = st.columns(4)
+            metric_map50.metric("mAP @ 0.5", f"{evaluation['map50'] * 100:.2f}%")
+            metric_map5095.metric(
+                "mAP @ 0.5:0.95", f"{evaluation['map50_95'] * 100:.2f}%"
+            )
+            metric_precision.metric(
+                "Mean Precision", f"{evaluation['mean_precision'] * 100:.2f}%"
+            )
+            metric_recall.metric(
+                "Mean Recall", f"{evaluation['mean_recall'] * 100:.2f}%"
+            )
+
+            st.markdown("---")
+            detail_images, detail_boxes, detail_size, detail_backend = st.columns(4)
+            detail_images.metric("Evaluation Images", f"{evaluation['images']:,}")
+            detail_boxes.metric(
+                "Ground-Truth Boxes", f"{evaluation['ground_truth_boxes']:,}"
+            )
+            detail_size.metric(
+                "Input Resolution",
+                f"{evaluation['image_size']} × {evaluation['image_size']}",
+            )
+            detail_backend.metric("Inference Backend", evaluation["backend"])
+
+            st.subheader("Per-Class Average Precision")
+            class_rows = []
+            for class_name, values in evaluation["per_class"].items():
+                class_rows.append({
+                    "Class": class_name,
+                    "Ground-Truth Boxes": values["ground_truth_boxes"],
+                    "Precision": f"{values['precision'] * 100:.2f}%",
+                    "Recall": f"{values['recall'] * 100:.2f}%",
+                    "AP @ 0.5": f"{values['ap50'] * 100:.2f}%",
+                    "AP @ 0.5:0.95": f"{values['ap50_95'] * 100:.2f}%",
+                })
+            st.dataframe(pd.DataFrame(class_rows), use_container_width=True, hide_index=True)
+
+            with st.expander("Evaluation protocol"):
+                if evaluation["dataset"] == "FLIR Aligned":
+                    split_description = "Official FLIR aligned test split"
+                else:
+                    split_description = (
+                        "Deterministic 20% M3FD validation split "
+                        f"(seed {evaluation['split_seed']})"
+                    )
+                evaluated_classes = ", ".join(evaluation["per_class"])
+                st.markdown(
+                    f"""
+                    - **Dataset:** {evaluation['dataset']}
+                    - **Split:** {split_description}
+                    - **Classes included in mAP mean:** {evaluated_classes}
+                    - **Confidence threshold:** {evaluation['confidence_threshold']}
+                    - **NMS IoU threshold:** {evaluation['nms_iou_threshold']}
+                    - **IoU thresholds for mAP:** 0.50 to 0.95 in 0.05 increments
+                    - **Detections after NMS:** {evaluation['detections_after_nms']:,}
+                    - **Mean TensorRT inference:** {evaluation['mean_inference_ms']:.2f} ms/image
+                    - **Mean NMS:** {evaluation['mean_nms_ms']:.2f} ms/image
+                    """
+                )
+
+    st.markdown("---")
+    st.subheader("Jetson TensorRT Invocation Benchmark")
+    if not TENSORRT_BENCHMARK_RESULTS_PATH.is_file():
+        st.warning(
+            "Jetson runtime results are not available. Run the TensorRT benchmark "
+            f"to create `{TENSORRT_BENCHMARK_RESULTS_PATH}`."
+        )
+    else:
+        try:
+            benchmark = json.loads(
+                TENSORRT_BENCHMARK_RESULTS_PATH.read_text(encoding="utf-8")
+            )
+        except (OSError, json.JSONDecodeError) as exc:
+            st.error(f"Unable to load Jetson runtime results: {exc}")
+        else:
+            runtime_table = "\n".join([
+                "| Metric | Result |",
+                "|---|---:|",
+                (
+                    "| Mean latency | "
+                    f"**{benchmark['mean_ms']:.2f} ± "
+                    f"{benchmark['population_std_ms']:.2f} ms** |"
+                ),
+                f"| Median | **{benchmark['median_ms']:.2f} ms** |",
+                (
+                    "| p95 / p99 | "
+                    f"**{benchmark['p95_ms']:.2f} / "
+                    f"{benchmark['p99_ms']:.2f} ms** |"
+                ),
+                (
+                    "| Min / max | "
+                    f"**{benchmark['min_ms']:.2f} / "
+                    f"{benchmark['max_ms']:.2f} ms** |"
+                ),
+                (
+                    "| Reciprocal rate | "
+                    f"**{benchmark['reciprocal_fps']:.2f} FPS** |"
+                ),
+            ])
+            st.markdown(runtime_table)
+            st.caption(
+                f"{benchmark['warmup_passes']} discarded warmup passes followed "
+                f"immediately by {benchmark['timed_invocations']} timed invocations. "
+                "This is isolated TensorRT invocation latency, not end-to-end video FPS."
+            )
+
+            with st.expander("Runtime benchmark protocol"):
+                excluded = ", ".join(benchmark["excluded"])
+                st.markdown(
+                    "\n".join([
+                        f"- **Input:** {benchmark['input_source']}",
+                        f"- **Timed region:** {benchmark['timing_scope']}",
+                        f"- **Excluded:** {excluded}",
+                        "- **Standard deviation:** population SD across the 100 timed invocations",
+                    ])
+                )
+

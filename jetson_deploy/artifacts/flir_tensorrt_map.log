@@ -1,0 +1,82 @@
+/home/owenk/cv-trainer-venv/lib/python3.10/site-packages/matplotlib/projections/__init__.py:63: UserWarning: Unable to import Axes3D. This may be due to multiple versions of Matplotlib being installed (e.g. as a system package and as a pip package). As a result, the 3D projection is not available.
+  warnings.warn("Unable to import Axes3D. This may be due to multiple versions of "
+PROGRESS 1/1013 (0.1%) ETA=21.7min
+PROGRESS 25/1013 (2.5%) ETA=2.4min
+PROGRESS 50/1013 (4.9%) ETA=2.0min
+PROGRESS 75/1013 (7.4%) ETA=1.8min
+PROGRESS 100/1013 (9.9%) ETA=1.6min
+PROGRESS 125/1013 (12.3%) ETA=1.5min
+PROGRESS 150/1013 (14.8%) ETA=1.4min
+PROGRESS 175/1013 (17.3%) ETA=1.4min
+PROGRESS 200/1013 (19.7%) ETA=1.3min
+PROGRESS 225/1013 (22.2%) ETA=1.2min
+PROGRESS 250/1013 (24.7%) ETA=1.2min
+PROGRESS 275/1013 (27.1%) ETA=1.1min
+PROGRESS 300/1013 (29.6%) ETA=1.1min
+PROGRESS 325/1013 (32.1%) ETA=1.1min
+PROGRESS 350/1013 (34.6%) ETA=1.0min
+PROGRESS 375/1013 (37.0%) ETA=1.0min
+PROGRESS 400/1013 (39.5%) ETA=0.9min
+PROGRESS 425/1013 (42.0%) ETA=0.9min
+PROGRESS 450/1013 (44.4%) ETA=0.8min
+PROGRESS 475/1013 (46.9%) ETA=0.8min
+PROGRESS 500/1013 (49.4%) ETA=0.7min
+PROGRESS 525/1013 (51.8%) ETA=0.7min
+PROGRESS 550/1013 (54.3%) ETA=0.7min
+PROGRESS 575/1013 (56.8%) ETA=0.6min
+PROGRESS 600/1013 (59.2%) ETA=0.6min
+PROGRESS 625/1013 (61.7%) ETA=0.6min
+PROGRESS 650/1013 (64.2%) ETA=0.5min
+PROGRESS 675/1013 (66.6%) ETA=0.5min
+PROGRESS 700/1013 (69.1%) ETA=0.4min
+PROGRESS 725/1013 (71.6%) ETA=0.4min
+PROGRESS 750/1013 (74.0%) ETA=0.4min
+PROGRESS 775/1013 (76.5%) ETA=0.3min
+PROGRESS 800/1013 (79.0%) ETA=0.3min
+PROGRESS 825/1013 (81.4%) ETA=0.3min
+PROGRESS 850/1013 (83.9%) ETA=0.2min
+PROGRESS 875/1013 (86.4%) ETA=0.2min
+PROGRESS 900/1013 (88.8%) ETA=0.2min
+PROGRESS 925/1013 (91.3%) ETA=0.1min
+PROGRESS 950/1013 (93.8%) ETA=0.1min
+PROGRESS 975/1013 (96.2%) ETA=0.1min
+PROGRESS 1000/1013 (98.7%) ETA=0.0min
+PROGRESS 1013/1013 (100.0%) ETA=0.0min
+{
+  "backend": "TensorRT FP16",
+  "engine": "/home/owenk/CVPaper/cmafm/jetson_deploy/artifacts/cmafm_yolo_640_fp16.engine",
+  "dataset": "FLIR Aligned",
+  "manifest": "/home/owenk/CVPaper/cmafm/jetson_deploy/data/cmafm_flir_eval/manifest.json",
+  "split_seed": null,
+  "image_size": 640,
+  "images": 1013,
+  "ground_truth_boxes": 8231,
+  "detections_after_nms": 93915,
+  "confidence_threshold": 0.001,
+  "nms_iou_threshold": 0.6,
+  "map50": 0.8967356566808296,
+  "map50_95": 0.5397261219738457,
+  "mean_precision": 0.873036749192096,
+  "mean_recall": 0.8216233061126761,
+  "mean_inference_ms": 47.833057486553066,
+  "mean_nms_ms": 5.237232578490485,
+  "per_class": {
+    "People": {
+      "class_id": 0,
+      "ground_truth_boxes": 4107,
+      "precision": 0.8866475645029486,
+      "recall": 0.775157378471715,
+      "ap50": 0.8734593989716073,
+      "ap50_95": 0.46598984901653095
+    },
+    "Car": {
+      "class_id": 1,
+      "ground_truth_boxes": 4124,
+      "precision": 0.8594259338812433,
+      "recall": 0.8680892337536372,
+      "ap50": 0.9200119143900518,
+      "ap50_95": 0.6134623949311605
+    }
+  }
+}
+RESULT_JSON=/home/owenk/CVPaper/cmafm/jetson_deploy/artifacts/flir_tensorrt_map.json
