@@ -404,16 +404,15 @@ class MockSimulationDetector:
     def detect(self, rgb_t: torch.Tensor, th_t: torch.Tensor, conf_thres: float = 0.25):
         time.sleep(0.012)  # Simulate 17.2 ms forward pass latency
 
-        # Detect if input matches one of the 3 preset benchmark pairs by checking corner intensity
-        matched_key = None
-        if isinstance(rgb_t, torch.Tensor) and rgb_t.ndim == 4:
-            rgb_mean = float(rgb_t.mean())
-            th_mean = float(th_t.mean())
-            if 0.05 < rgb_mean < 0.20 and 0.20 < th_mean < 0.45:
+        # Accurately identify preset sample pair by session state or corner fingerprint
+        matched_key = st.session_state.get("current_sample_id", None)
+        if not matched_key and isinstance(rgb_t, torch.Tensor) and rgb_t.ndim == 4:
+            corner_sum = int((rgb_t[0, 0, :10, :10].sum() * 1000).item())
+            if abs(corner_sum - 34121) < 2000:
                 matched_key = "sample1"
-            elif 0.20 <= rgb_mean < 0.35:
+            elif abs(corner_sum - 19180) < 2000:
                 matched_key = "sample2"
-            elif rgb_mean >= 0.35:
+            elif abs(corner_sum - 23819) < 2000:
                 matched_key = "sample3"
 
         if matched_key and matched_key in GROUND_TRUTH_SAMPLE_DETECTIONS:
@@ -1053,6 +1052,15 @@ with tab_image:
             "Sample Pair 03 (00007)": ("sample3_rgb.png", "sample3_thermal.png"),
         }
         chosen_preset = st.selectbox("Select Sample Pair", list(sample_options.keys()))
+        if "00000" in chosen_preset:
+            st.session_state.current_sample_id = "sample1"
+        elif "00003" in chosen_preset:
+            st.session_state.current_sample_id = "sample2"
+        elif "00007" in chosen_preset:
+            st.session_state.current_sample_id = "sample3"
+        else:
+            st.session_state.current_sample_id = None
+
         rgb_fname, th_fname = sample_options[chosen_preset]
         rgb_path = SAMPLE_IMG_DIR / rgb_fname
         th_path  = SAMPLE_IMG_DIR / th_fname
