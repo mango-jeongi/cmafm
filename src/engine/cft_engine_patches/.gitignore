@@ -1,0 +1,16 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# OS artifacts
+.DS_Store
+desktop.ini
+Thumbs.db
+
+# Environment & caches
+.venv/
+.env
+.ipynb_checkpoints/
+*.tmp
+*.bak
