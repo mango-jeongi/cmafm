@@ -1,6 +1,6 @@
 {
   "created_utc": "2026-08-28T22:46:56.182326+00:00",
-  "engine": "/home/owenk/CVPaper/cmafm/jetson_deploy/artifacts/cmafm_yolo_640_fp16.engine",
+  "engine": "$CMAFM_REPO/jetson_deploy/artifacts/cmafm_yolo_640_fp16.engine",
   "input_source": "seeded synthetic tensors (seed=42)",
   "warmup_passes": 5,
   "timed_invocations": 100,

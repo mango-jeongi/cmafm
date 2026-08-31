@@ -1,8 +1,8 @@
 {
   "backend": "TensorRT FP16",
-  "engine": "/home/owenk/CVPaper/cmafm/jetson_deploy/artifacts/cmafm_yolo_640_fp16.engine",
+  "engine": "$CMAFM_REPO/jetson_deploy/artifacts/cmafm_yolo_640_fp16.engine",
   "dataset": "FLIR Aligned",
-  "manifest": "/home/owenk/CVPaper/cmafm/jetson_deploy/data/cmafm_flir_eval/manifest.json",
+  "manifest": "$CMAFM_REPO/jetson_deploy/data/cmafm_flir_eval/manifest.json",
   "split_seed": null,
   "image_size": 640,
   "images": 1013,

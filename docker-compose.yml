@@ -1,18 +1,45 @@
 version: '3.8'
 
 services:
+  # ── Architecture Verification (no GPU / no weights required) ────────────────
+  cmafm-verify:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cmafm_verify
+    profiles: [verify]
+    # Runs python run_demo.py (default CMD) — exit 0 on success
+
+  # ── Interactive Dashboard ────────────────────────────────────────────────────
   cmafm-dashboard:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: cmafm_demo_container
+    container_name: cmafm_dashboard
+    command:
+      - streamlit
+      - run
+      - src/fusion/dashboard.py
+      - --server.port=8501
+      - --server.address=0.0.0.0
+      - --server.headless=true
     ports:
       - "8501:8501"
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - DATASET_DIR=/workspace/data
+      - KMP_DUPLICATE_LIB_OK=TRUE
     volumes:
+      # Mount local data/ directory read-only for dataset access (optional)
       - ./data:/workspace/data:ro
+      # Mount local weights/ directory if available (optional)
+      - ./weights:/workspace/weights:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/healthz"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
     deploy:
       resources:
         reservations:

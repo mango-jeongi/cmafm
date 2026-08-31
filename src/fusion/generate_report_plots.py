@@ -1,5 +1,5 @@
 """
-Automated Results Generator & Plotter for CS3315 Final Project.
+Automated Results Generator & Plotter for CMAFM multispectral detection experiments.
 
 This script:
 1. Loads the validation set and splits it by brightness (Day vs. Night).

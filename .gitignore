@@ -11,8 +11,9 @@ env/
 venv/
 ENV/
 
-# VSCode settings
+# VSCode / IDE settings
 .vscode/
+.idea/
 
 # Build artifacts
 build/
@@ -24,28 +25,35 @@ dist/
 Thumbs.db
 desktop.ini
 
-# CFT engine (submodule)
+# CFT engine (cloned by setup.sh, not committed)
 CFT_repo/
+cft_engine/
 
-# Model weights (download separately)
+# Model weights (too large to commit; download separately per README)
 weights/
 *.pt
 *.pth
 *.ckpt
+*.onnx
+*.engine
 
-# Directories removed from release (kept on submission-v1669 for archival)
-docs/
-manuscript/
-results/
-
-# Local path application script
+# Local path configuration (machine-specific, do not commit)
 scripts/apply_local_paths.py
 
-# Local Environment Variables
+# Local Environment Variables (machine-specific secrets)
 .env
 
-# HPC outputs and tensorboard cache
+# HPC outputs, TensorBoard logs, and training run artifacts
 logs/
 runs/*
+
+# Bundled FLIR driving sequence demos for the video tracking dashboard tab
 !runs/flir_v1_rgb.mp4
 !runs/flir_v1_thermal.mp4
+
+# Supplementary zip artifacts (built by scripts/build_supplementary.sh)
+*.zip
+CMAFM_Supplementary_*.zip
+
+# SSH tunnel logs
+ssh_tunnel_watchdog.log

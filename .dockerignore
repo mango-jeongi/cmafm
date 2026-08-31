@@ -1,0 +1,53 @@
+# .dockerignore — Exclude files from Docker build context
+# These won't be copied into the container image
+
+# Git internals
+.git
+.gitmodules
+.gitignore
+
+# CFT engine (setup script clones it; it's not committed to the repo)
+cft_engine/
+
+# Python caches
+__pycache__/
+*.pyc
+*.pyo
+.ipynb_checkpoints/
+
+# Virtual environments (container has its own)
+.venv/
+venv/
+env/
+ENV/
+
+# Local secrets (never ship these)
+.env
+*.env
+
+# Model weights (too large; mounted as volumes or downloaded separately)
+weights/
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.engine
+
+# HPC outputs and training artifacts
+logs/
+runs/flir_v1_rgb.mp4
+runs/flir_v1_thermal.mp4
+
+# Documentation build output
+docs/_build/
+
+# Scratch / IDE
+.vscode/
+.idea/
+*.swp
+
+# Supplementary archives
+*.zip
+
+# Mac metadata
+.DS_Store

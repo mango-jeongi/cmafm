@@ -1,8 +1,8 @@
 {
   "backend": "TensorRT FP16",
-  "engine": "/home/owenk/CVPaper/cmafm/jetson_deploy/artifacts/cmafm_yolo_640_fp16.engine",
+  "engine": "$CMAFM_REPO/jetson_deploy/artifacts/cmafm_yolo_640_fp16.engine",
   "dataset": "M3FD",
-  "manifest": "/home/owenk/CVPaper/cmafm/jetson_deploy/data/cmafm_m3fd_val_seed42/manifest.json",
+  "manifest": "$CMAFM_REPO/jetson_deploy/data/cmafm_m3fd_val_seed42/manifest.json",
   "split_seed": 42,
   "image_size": 640,
   "images": 840,

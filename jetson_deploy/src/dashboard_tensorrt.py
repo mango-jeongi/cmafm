@@ -134,7 +134,7 @@ def infer_pair(
 
 
 st.title("CMAFM RGB + Thermal Detection")
-st.caption("FP16 TensorRT inference running on JETSON-OR-OK")
+st.caption("FP16 TensorRT inference — Jetson Orin Nano (edge device)")
 
 with st.sidebar:
     st.header("Runtime")

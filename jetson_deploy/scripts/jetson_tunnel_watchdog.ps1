@@ -1,8 +1,8 @@
 param(
     [int]$LocalPort = 18502,
     [int]$RemotePort = 8502,
-    [string]$RemoteHost = "JETSON-OR-OK",
-    [string]$RemoteUser = "owenk"
+    [string]$RemoteHost = "your-jetson-hostname",
+    [string]$RemoteUser = "your-jetson-username"
 )
 
 $ErrorActionPreference = "SilentlyContinue"
