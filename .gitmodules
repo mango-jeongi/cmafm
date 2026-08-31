@@ -1,3 +1,4 @@
 [submodule "cft_engine"]
 	path = cft_engine
 	url = https://github.com/DocF/multispectral-object-detection.git
+	ignore = dirty

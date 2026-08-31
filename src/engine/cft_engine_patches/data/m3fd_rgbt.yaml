@@ -1,0 +1,15 @@
+# M3FD Multispectral Dataset (YOLOv5/v8 Format)
+# Dataset Path (Relative to engine root)
+path: ../data/M3FD_YOLO
+
+train: images/train  # path relative to 'path'
+val: images/val      # path relative to 'path'
+
+# Classes
+names:
+  0: People
+  1: Car
+  2: Bus
+  3: Motorcycle
+  4: Lamp
+  5: Truck

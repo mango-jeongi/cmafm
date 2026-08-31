@@ -645,3 +645,5 @@ class GPT(nn.Module):
         ir_fea_out = F.interpolate(ir_fea_out, size=([h, w]), mode='bilinear')
 
         return rgb_fea_out, ir_fea_out
+# CMAFM_CHECKPOINT_COMPAT
+from .cmafm_checkpoint import CMAFM_Fusion, _CMAFM
