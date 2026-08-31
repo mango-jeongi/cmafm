@@ -3,7 +3,8 @@
 # Produces an anonymized, self-contained zip under 200MB.
 
 param(
-    [switch]$WithVideos = $false
+    [switch]$WithVideos = $false,
+    [switch]$WithFigures = $false
 )
 
 $ErrorActionPreference = "Stop"
@@ -16,6 +17,7 @@ Write-Host "=== CMAFM WACV 2027 Supplementary Packager (PowerShell) ===" -Foregr
 Write-Host "Source: $repoRoot"
 Write-Host "Target: $zipPath"
 Write-Host "Include videos: $WithVideos"
+Write-Host "Include high-res figures: $WithFigures"
 
 if (Test-Path $zipPath) {
     Remove-Item $zipPath -Force
@@ -40,6 +42,17 @@ try {
 
     $cmd = "robocopy `"$repoRoot`" `"$codeDir`" /E /XD $($excludeDirs -join ' ') /XF $($excludeFiles -join ' ') /NFL /NDL /NJH /NJS"
     Invoke-Expression $cmd | Out-Null
+
+    # If WithFigures flag is set, bundle high-res figures from wacv-2027-author-kit-template/images/
+    if ($WithFigures) {
+        $figuresSource = Join-Path (Split-Path $repoRoot -Parent) "wacv-2027-author-kit-template\images"
+        if (Test-Path $figuresSource) {
+            Write-Host "[*] Bundling high-resolution paper figures into docs/figures/..." -ForegroundColor Yellow
+            $figuresDest = Join-Path $codeDir "docs\figures"
+            New-Item -ItemType Directory -Path $figuresDest -Force | Out-Null
+            Copy-Item -Path "$figuresSource\*" -Destination $figuresDest -Recurse -Force
+        }
+    }
 
     # Clean any stray files
     Get-ChildItem -Path $codeDir -Filter "desktop.ini" -Recurse -Force -ErrorAction SilentlyContinue | Remove-Item -Force

@@ -4,17 +4,27 @@
 # Produces an anonymized, self-contained zip under 200MB.
 #
 # Usage:
-#   bash scripts/build_supplementary.sh [--with-videos]
+#   bash scripts/build_supplementary.sh [--with-videos] [--with-figures]
 #
-# By default, the FLIR driving sequence videos are excluded to minimize archive size.
-# Pass --with-videos to include them (~99MB additional).
+# Options:
+#   --with-videos    Include benchmark driving sequence videos (~99MB)
+#   --with-figures   Include high-resolution publication figures into docs/figures/
 
 set -euo pipefail
 
 WITH_VIDEOS=false
-if [[ "${1:-}" == "--with-videos" ]]; then
-    WITH_VIDEOS=true
-fi
+WITH_FIGURES=false
+
+for arg in "$@"; do
+    case $arg in
+        --with-videos)
+            WITH_VIDEOS=true
+            ;;
+        --with-figures)
+            WITH_FIGURES=true
+            ;;
+    esac
+done
 
 cd "$(dirname "$0")/.."   # Move to repo root
 
@@ -23,6 +33,7 @@ ZIP_PATH="$(pwd)/../${ZIP_NAME}"
 echo "=== CMAFM WACV 2027 Supplementary Packager ==="
 echo "Target: ${ZIP_PATH}"
 echo "Include videos: ${WITH_VIDEOS}"
+echo "Include high-res figures: ${WITH_FIGURES}"
 
 # Remove old zip if exists
 rm -f "${ZIP_PATH}"
@@ -68,6 +79,16 @@ if [[ "${WITH_VIDEOS}" == "false" ]]; then
     rm -f code/runs/flir_v1_thermal.mp4
     rm -f code/video_demo.mp4
     echo "Note: Video files excluded (use --with-videos to include them)."
+fi
+
+# ── Optionally bundle high-resolution paper figures ─────────────────────────
+if [[ "${WITH_FIGURES}" == "true" ]]; then
+    FIGURES_SRC="$(pwd)/../../wacv-2027-author-kit-template/images"
+    if [ -d "${FIGURES_SRC}" ]; then
+        echo "Bundling high-resolution figures into docs/figures/..."
+        mkdir -p code/docs/figures
+        cp -r "${FIGURES_SRC}"/* code/docs/figures/
+    fi
 fi
 
 # ── Remove any residual desktop.ini files from Google Drive ────────────────
