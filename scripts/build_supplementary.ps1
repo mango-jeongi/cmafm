@@ -59,7 +59,7 @@ try {
     Get-ChildItem -Path $codeDir -Filter "__pycache__" -Recurse -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force
 
     Write-Host "[*] Compressing archive to $zipName..." -ForegroundColor Yellow
-    Compress-Archive -Path "$codeDir" -DestinationPath $zipPath -CompressionLevel Optimal
+    Compress-Archive -Path "$codeDir" -DestinationPath $zipPath -CompressionLevel Optimal -Force
 
     $sizeBytes = (Get-Item $zipPath).Length
     $sizeMB = [Math]::Round($sizeBytes / 1MB, 2)
