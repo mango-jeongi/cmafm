@@ -1008,7 +1008,7 @@ if is_sim:
                     DEMO / SIMULATION MODE ACTIVE (ZERO WEIGHTS REQUIRED)
                 </div>
                 <div style='color:#fde68a; font-size:0.82rem; margin-top:3px; line-height:1.4;'>
-                    This mode allows instant interactive evaluation without downloading multi-gigabyte weight checkpoints. <strong>Preset benchmark sample pairs (00000, 00003, 00007) render exact verified ground-truth predictions from our trained model</strong>, while live video streams render real-time tracking telemetry (~17.2 ms). To run live custom weight checkpoints, select <code>CMAFM-YOLO</code> or <code>TensorRT</code> in the sidebar.
+                    This mode provides an interactive aesthetic demonstration of dashboard UI workflows, multi-modal layout views, and real-time edge telemetry (~17.2 ms) without requiring weight checkpoints. Detections and bounding boxes in this mode are <strong>synthetic mock representations for interface evaluation only</strong>. To run live inference with trained model weights, select <code>CMAFM-YOLO</code> or <code>TensorRT</code> in the sidebar.
                 </div>
             </div>
         </div>
