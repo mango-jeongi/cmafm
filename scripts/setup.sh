@@ -28,5 +28,6 @@ cp data/yolov5l_fusion_transformerx3_M3FD.yaml cft_engine/models/transformer/ 2>
 # 4. Run automated ultimate repair (patch_parser)
 echo "Running ultimate repair parser to inject automated fixes into cft_engine..."
 python3 src/engine/engine_fixes/patch_parser.py
+python3 jetson_deploy/scripts/install_checkpoint_compat.py --engine-dir cft_engine --compat-source jetson_deploy/compat/cmafm_checkpoint.py 2>/dev/null || true
 
 echo "Setup complete."

@@ -207,18 +207,18 @@ with image_tab:
             view_a, view_b, view_c = st.columns(3)
             with view_a:
                 st.subheader("RGB")
-                st.image(cv2.cvtColor(rgb_bgr, cv2.COLOR_BGR2RGB), use_container_width=True)
+                st.image(cv2.cvtColor(rgb_bgr, cv2.COLOR_BGR2RGB), width="stretch")
             with view_b:
                 st.subheader("Thermal")
-                st.image(thermal_gray, clamp=True, use_container_width=True)
+                st.image(thermal_gray, clamp=True, width="stretch")
             with view_c:
                 st.subheader("CMAFM detections")
-                st.image(cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB), use_container_width=True)
+                st.image(cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB), width="stretch")
 
             records = detection_records(detections)
             st.subheader("Detection details")
             if records:
-                st.dataframe(pd.DataFrame(records), use_container_width=True, hide_index=True)
+                st.dataframe(pd.DataFrame(records), width="stretch", hide_index=True)
             else:
                 st.warning("No detections passed the selected confidence threshold.")
 
@@ -232,14 +232,14 @@ with image_tab:
                     encoded.tobytes(),
                     file_name="cmafm_detection.jpg",
                     mime="image/jpeg",
-                    use_container_width=True,
+                    width="stretch",
                 )
             download_b.download_button(
                 "Download detection JSON",
                 json.dumps(records, indent=2),
                 file_name="cmafm_detection.json",
                 mime="application/json",
-                use_container_width=True,
+                width="stretch",
             )
 
 with video_tab:
@@ -291,7 +291,7 @@ with video_tab:
         "Run paired video detection",
         type="primary",
         disabled=not source_ready,
-        use_container_width=True,
+        width="stretch",
     ):
         uploaded_temp_paths: list[Path] = []
         output_path: Path | None = None
@@ -411,18 +411,18 @@ with video_tab:
                     preview_rgb.image(
                         cv2.cvtColor(rgb_frame, cv2.COLOR_BGR2RGB),
                         caption="RGB",
-                        use_container_width=True,
+                        width="stretch",
                     )
                     preview_thermal.image(
                         thermal_gray,
                         caption="Thermal",
                         clamp=True,
-                        use_container_width=True,
+                        width="stretch",
                     )
                     preview_detection.image(
                         cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB),
                         caption="CMAFM detections",
-                        use_container_width=True,
+                        width="stretch",
                     )
 
             writer.release()
@@ -468,7 +468,7 @@ with video_tab:
             result["bytes"],
             file_name="cmafm_tensorRT_detection.mp4",
             mime="video/mp4",
-            use_container_width=True,
+            width="stretch",
         )
         with st.expander("Frame-by-frame measurements"):
-            st.dataframe(pd.DataFrame(result["log"]), use_container_width=True, hide_index=True)
+            st.dataframe(pd.DataFrame(result["log"]), width="stretch", hide_index=True)

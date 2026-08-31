@@ -72,30 +72,12 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ── Modern Minimalist Clean Dark Theme ───────────────────────────────────────
+# ── Custom HUD Styling ────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
-
-/* -- Global Canvas -- */
-html, body, [data-testid="stAppViewContainer"], [data-testid="stMain"], [data-testid="block-container"],
-section[data-testid="stSidebarContent"] {
-    background-color: #080c14 !important;
-    color: #e2e8f0 !important;
-    font-family: 'Inter', -apple-system, sans-serif !important;
-}
-
-/* -- Sidebar Styling -- */
-[data-testid="stSidebar"] {
-    background: #0c111d !important;
-    border-right: 1px solid #1e293b !important;
-}
-
 /* -- Headings & Typography -- */
 h1, h2, h3, h4, h5, h6 {
-    font-family: 'Inter', sans-serif !important;
     font-weight: 700 !important;
-    color: #f8fafc !important;
     letter-spacing: -0.02em;
 }
 
@@ -105,15 +87,10 @@ h1, h2, h3, h4, h5, h6 {
     margin-bottom: 20px;
 }
 [data-testid="stTabs"] button {
-    font-family: 'JetBrains Mono', monospace !important;
     font-weight: 600 !important;
     font-size: 0.85rem !important;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    background-color: transparent !important;
-    color: #94a3b8 !important;
-    border: none !important;
-    border-bottom: 2px solid transparent !important;
     padding: 10px 20px !important;
     transition: all 0.2s ease;
 }
@@ -122,24 +99,19 @@ h1, h2, h3, h4, h5, h6 {
     border-bottom: 2px solid #38bdf8 !important;
     background: rgba(56, 189, 248, 0.04) !important;
 }
-[data-testid="stTabs"] button:hover {
-    color: #f1f5f9 !important;
-}
 
 /* -- Primary Button -- */
 [data-testid="stButton"] button[kind="primary"] {
-    background: #0284c7 !important;
     background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%) !important;
     color: #ffffff !important;
     border: 1px solid #38bdf8 !important;
     border-radius: 4px !important;
-    font-family: 'JetBrains Mono', monospace !important;
     font-weight: 700 !important;
     font-size: 0.85rem !important;
     text-transform: uppercase;
     letter-spacing: 0.08em;
     padding: 8px 16px !important;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.15);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
     transition: all 0.15s ease;
 }
 [data-testid="stButton"] button[kind="primary"]:hover {
@@ -154,18 +126,15 @@ h1, h2, h3, h4, h5, h6 {
     border: 1px solid #1e293b !important;
     border-radius: 6px !important;
     padding: 14px 18px !important;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 [data-testid="stMetricLabel"] {
     color: #94a3b8 !important;
-    font-family: 'JetBrains Mono', monospace !important;
     font-size: 0.75rem !important;
     text-transform: uppercase;
     letter-spacing: 0.06em;
 }
 [data-testid="stMetricValue"] {
     color: #38bdf8 !important;
-    font-family: 'JetBrains Mono', monospace !important;
     font-weight: 700 !important;
     font-size: 1.35rem !important;
 }
@@ -175,27 +144,6 @@ h1, h2, h3, h4, h5, h6 {
     background: #0f172a !important;
     border: 1px dashed #334155 !important;
     border-radius: 6px !important;
-    transition: all 0.2s ease;
-}
-[data-testid="stFileUploader"] section:hover {
-    border-color: #38bdf8 !important;
-    background: rgba(56, 189, 248, 0.03) !important;
-}
-
-/* -- Dataframe / Tables -- */
-[data-testid="stDataFrame"] {
-    border: 1px solid #1e293b !important;
-    border-radius: 6px !important;
-    font-family: 'JetBrains Mono', monospace !important;
-}
-
-/* -- Code & Monospace Badges -- */
-code {
-    font-family: 'JetBrains Mono', monospace !important;
-    background: #1e293b !important;
-    color: #38bdf8 !important;
-    padding: 2px 6px !important;
-    border-radius: 4px !important;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -639,13 +587,13 @@ def run_three_way_detection(rgb_np, th_np, score_thresh, source_label=""):
     col_r, col_t, col_f = st.columns(3)
     with col_r:
         st.markdown("##### RGB (Visible Only)")
-        st.image(vis_rgb, use_container_width=True)
+        st.image(vis_rgb, width="stretch")
     with col_t:
         st.markdown("##### Thermal (Infrared Only)")
-        st.image(vis_th, use_container_width=True)
+        st.image(vis_th, width="stretch")
     with col_f:
         st.markdown("##### CMAFM Fused Detection")
-        st.image(vis_fusion, use_container_width=True)
+        st.image(vis_fusion, width="stretch")
 
     # -- Telemetry Cards --
     st.markdown("---")
@@ -678,7 +626,7 @@ def run_three_way_detection(rgb_np, th_np, score_thresh, source_label=""):
                 yaxis=dict(showgrid=True, gridcolor="#1e293b", zeroline=False, tickfont=dict(color="#94a3b8")),
                 showlegend=False,
             )
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
         else:
             st.info("No objects detected above current threshold.")
 
@@ -689,7 +637,7 @@ def run_three_way_detection(rgb_np, th_np, score_thresh, source_label=""):
             df.index += 1
             df.columns = ["Class", "Confidence", "X_Min", "Y_Min", "X_Max", "Y_Max"]
             df["Confidence"] = df["Confidence"].apply(lambda x: f"{x:.3f}")
-            st.dataframe(df, use_container_width=True, height=220)
+            st.dataframe(df, width="stretch", height=220)
         else:
             st.info(f"Threshold: >= {score_thresh:.2f}")
 
@@ -791,7 +739,7 @@ with st.sidebar:
 
     # ── Start System Button ──
     st.markdown("<br>", unsafe_allow_html=True)
-    if st.button("START SYSTEM", type="primary", use_container_width=True):
+    if st.button("START SYSTEM", type="primary", width="stretch"):
         st.cache_resource.clear()
         if not ckpt_path or not Path(ckpt_path).exists():
             st.error("Checkpoint file not found.")
@@ -937,7 +885,7 @@ with tab_image:
                                        help="Select image index from M3FD multispectral benchmark.")
             with col_s2:
                 st.markdown("<br>", unsafe_allow_html=True)
-                if st.button("RANDOM FRAME", use_container_width=True):
+                if st.button("RANDOM FRAME", width="stretch"):
                     sample_idx = int(np.random.randint(0, len(rgb_files)))
                     st.rerun()
             chosen_rgb = rgb_files[sample_idx]
@@ -966,11 +914,11 @@ with tab_image:
         st.markdown("---")
         col_pr1, col_pr2 = st.columns(2)
         with col_pr1:
-            st.image(rgb_np_target, caption=f"Visible RGB Input ({rgb_np_target.shape[1]}x{rgb_np_target.shape[0]})", use_container_width=True)
+            st.image(rgb_np_target, caption=f"Visible RGB Input ({rgb_np_target.shape[1]}x{rgb_np_target.shape[0]})", width="stretch")
         with col_pr2:
-            st.image(th_np_target, caption=f"Thermal IR Input ({th_np_target.shape[1]}x{th_np_target.shape[0]})", use_container_width=True)
+            st.image(th_np_target, caption=f"Thermal IR Input ({th_np_target.shape[1]}x{th_np_target.shape[0]})", width="stretch")
 
-        if st.button("RUN DETECTION", type="primary", disabled=not model_ready, key="btn_run_img", use_container_width=True):
+        if st.button("RUN DETECTION", type="primary", disabled=not model_ready, key="btn_run_img", width="stretch"):
             run_three_way_detection(rgb_np_target, th_np_target, score_thresh, source_tag)
 
 
@@ -1029,7 +977,7 @@ with tab_video:
 
     run_vid = st.button("RUN VIDEO TRACKING", type="primary",
                          disabled=(not model_ready or rgb_vid_path is None or th_vid_path is None),
-                         key="btn_run_fmv", use_container_width=True)
+                         key="btn_run_fmv", width="stretch")
 
     if run_vid and rgb_vid_path and th_vid_path:
         cap_r = cv2.VideoCapture(rgb_vid_path)
@@ -1181,9 +1129,9 @@ with tab_video:
             # Live preview every 5 frames
             if proc_count % 5 == 1:
                 if tri_modal_mode and prev_rgb is not None and prev_th is not None:
-                    prev_rgb.image(vis_rgb, caption=f"RGB Baseline ({len(results_rgb)} objects)", use_container_width=True)
-                    prev_th.image(vis_th, caption=f"Thermal Baseline ({len(results_th)} objects)", use_container_width=True)
-                prev_fusion.image(vis_fusion, caption=f"CMAFM Fused ({len(results_fusion)} objects · {elapsed_fusion:.1f} ms)", use_container_width=True)
+                    prev_rgb.image(vis_rgb, caption=f"RGB Baseline ({len(results_rgb)} objects)", width="stretch")
+                    prev_th.image(vis_th, caption=f"Thermal Baseline ({len(results_th)} objects)", width="stretch")
+                prev_fusion.image(vis_fusion, caption=f"CMAFM Fused ({len(results_fusion)} objects · {elapsed_fusion:.1f} ms)", width="stretch")
 
             if proc_count % 5 == 1 or frame_idx >= frames_to_process - 1:
                 avg_fusion_ms = total_time_fusion / max(proc_count, 1)
@@ -1282,12 +1230,12 @@ with tab_video:
                 st.caption("Active Detected Objects per Frame")
                 fig1 = go.Figure(go.Scatter(x=log_frames, y=log_dets, mode="lines", line=dict(color="#38bdf8", width=2)))
                 fig1.update_layout(**_chart_layout)
-                st.plotly_chart(fig1, use_container_width=True)
+                st.plotly_chart(fig1, width="stretch")
             with col_g2:
                 st.caption("Engine Execution Latency (ms)")
                 fig2 = go.Figure(go.Scatter(x=log_frames, y=log_ms, mode="lines", line=dict(color="#10b981", width=2)))
                 fig2.update_layout(**_chart_layout)
-                st.plotly_chart(fig2, use_container_width=True)
+                st.plotly_chart(fig2, width="stretch")
 
             if event_log:
                 st.markdown("##### [CHRONOLOGICAL DETECTION EVENTS]")
@@ -1438,7 +1386,7 @@ with tab_evaluation:
                     "AP @ 0.5": f"{values['ap50'] * 100:.2f}%",
                     "AP @ 0.5:0.95": f"{values['ap50_95'] * 100:.2f}%",
                 })
-            st.dataframe(pd.DataFrame(class_rows), use_container_width=True, hide_index=True)
+            st.dataframe(pd.DataFrame(class_rows), width="stretch", hide_index=True)
 
             with st.expander("Evaluation protocol"):
                 if evaluation["dataset"] == "FLIR Aligned":

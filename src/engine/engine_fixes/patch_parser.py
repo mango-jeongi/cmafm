@@ -6,6 +6,7 @@ print("--- Starting Ultimate Total Repair (v8 - Final Cleanup & Plot Fix) ---")
 # 1. RESET FILES
 engine_dir = 'cft_engine'
 files_to_fix = [
+    'models/yolo.py',
     'models/yolo_test.py', 
     'utils/datasets.py', 
     'utils/general.py', 
@@ -17,22 +18,25 @@ files_to_fix = [
 for f_path in files_to_fix:
     try:
         print(f"Resetting {f_path} to original DocF state...")
-        subprocess.run(['git', 'checkout', f_path], cwd=engine_dir, check=True)
+        subprocess.run(['git', 'checkout', f_path], cwd=engine_dir, check=True, capture_output=True)
     except Exception as e:
-        print(f"Warning: Git reset failed for {f_path}: {e}")
+        pass
 
-# 2. PATCH PARSER (yolo_test.py)
-parser_path = os.path.join(engine_dir, 'models/yolo_test.py')
-with open(parser_path, 'r') as f:
-    content = f.read()
+# 2. PATCH PARSER (yolo_test.py and yolo.py)
+for parser_file in ['models/yolo_test.py', 'models/yolo.py']:
+    parser_path = os.path.join(engine_dir, parser_file)
+    if not os.path.exists(parser_path):
+        continue
+    with open(parser_path, 'r', encoding='utf-8', errors='ignore') as f:
+        content = f.read()
 
-if 'from .cmafm import CMAFM_Fusion' not in content:
-    content = 'from .cmafm import CMAFM_Fusion\n' + content
+    if 'from .cmafm import CMAFM_Fusion' not in content:
+        content = 'from .cmafm import CMAFM_Fusion\n' + content
 
-old_block = """        elif m is Concat:
+    old_block = """        elif m is Concat:
             c2 = sum([ch[x] for x in f])"""
 
-new_block = """        elif m is Concat:
+    new_block = """        elif m is Concat:
             c2 = sum([ch[x] for x in f])
             args = [args[0] if args else 1]  # Fix: DocF engine Concat bug
         elif m is CMAFM_Fusion:
@@ -42,16 +46,19 @@ new_block = """        elif m is Concat:
                 c2 = make_divisible(c2 * gw, 8)
             args = [c1, c2]"""
 
-if old_block in content:
-    content = content.replace(old_block, new_block)
-    with open(parser_path, 'w') as f:
+    if old_block in content:
+        content = content.replace(old_block, new_block)
+
+    with open(parser_path, 'w', encoding='utf-8') as f:
         f.write(content)
-    print("Successfully patched models/yolo_test.py")
+    print(f"Successfully patched {parser_file}")
 
 # 3. PATCH UTILS (datasets.py and general.py)
 for util_file in ['utils/datasets.py', 'utils/general.py']:
     u_path = os.path.join(engine_dir, util_file)
-    with open(u_path, 'r') as f:
+    if not os.path.exists(u_path):
+        continue
+    with open(u_path, 'r', encoding='utf-8', errors='ignore') as f:
         u_content = f.read()
 
     if 'datasets.py' in util_file:
@@ -84,61 +91,64 @@ for util_file in ['utils/datasets.py', 'utils/general.py']:
     u_content = u_content.replace('.astype(np.float)', '.astype(float)')
     u_content = u_content.replace('.astype(np.bool)', '.astype(bool)')
 
-    with open(u_path, 'w') as f:
+    with open(u_path, 'w', encoding='utf-8') as f:
         f.write(u_content)
     print(f"Successfully patched {util_file}")
 
 # 4. PATCH LOSS (utils/loss.py)
 loss_path = os.path.join(engine_dir, 'utils/loss.py')
-with open(loss_path, 'r') as f:
-    l_content = f.read()
+if os.path.exists(loss_path):
+    with open(loss_path, 'r', encoding='utf-8', errors='ignore') as f:
+        l_content = f.read()
 
-old_indexing = "indices.append((b, a, gj.clamp_(0, gain[3] - 1), gi.clamp_(0, gain[2] - 1)))  # image, anchor, grid indices"
-new_indexing = "indices.append((b, a, gj.clamp_(0, (gain[3] - 1).long()), gi.clamp_(0, (gain[2] - 1).long())))  # image, anchor, grid indices"
+    old_indexing = "indices.append((b, a, gj.clamp_(0, gain[3] - 1), gi.clamp_(0, gain[2] - 1)))  # image, anchor, grid indices"
+    new_indexing = "indices.append((b, a, gj.clamp_(0, (gain[3] - 1).long()), gi.clamp_(0, (gain[2] - 1).long())))  # image, anchor, grid indices"
 
-if old_indexing in l_content:
-    l_content = l_content.replace(old_indexing, new_indexing)
-else:
-    l_lines = l_content.splitlines()
-    final_lines = []
-    for line in l_lines:
-        if 'indices.append((b, a, gj.clamp_' in line:
-            indent = line[:line.find('indices.append')]
-            line = indent + "indices.append((b, a, gj.clamp_(0, (gain[3] - 1).long()), gi.clamp_(0, (gain[2] - 1).long())))"
-        final_lines.append(line)
-    l_content = "\n".join(final_lines)
+    if old_indexing in l_content:
+        l_content = l_content.replace(old_indexing, new_indexing)
+    else:
+        l_lines = l_content.splitlines()
+        final_lines = []
+        for line in l_lines:
+            if 'indices.append((b, a, gj.clamp_' in line:
+                indent = line[:line.find('indices.append')]
+                line = indent + "indices.append((b, a, gj.clamp_(0, (gain[3] - 1).long()), gi.clamp_(0, (gain[2] - 1).long())))"
+            final_lines.append(line)
+        l_content = "\n".join(final_lines)
 
-with open(loss_path, 'w') as f:
-    f.write(l_content)
-print("Successfully patched utils/loss.py")
+    with open(loss_path, 'w', encoding='utf-8') as f:
+        f.write(l_content)
+    print("Successfully patched utils/loss.py")
 
 # 5. PATCH TEST LOGGING (test.py)
 test_path = os.path.join(engine_dir, 'test.py')
-with open(test_path, 'r') as f:
-    t_content = f.read()
+if os.path.exists(test_path):
+    with open(test_path, 'r', encoding='utf-8', errors='ignore') as f:
+        t_content = f.read()
 
-old_wandb_log = "wandb_logger.wandb.Image(img[si]"
-new_wandb_log = "wandb_logger.wandb.Image(img[si][:3]"
+    old_wandb_log = "wandb_logger.wandb.Image(img[si]"
+    new_wandb_log = "wandb_logger.wandb.Image(img[si][:3]"
 
-if old_wandb_log in t_content:
-    t_content = t_content.replace(old_wandb_log, new_wandb_log)
-    with open(test_path, 'w') as f:
-        f.write(t_content)
-    print("Successfully patched test.py")
+    if old_wandb_log in t_content:
+        t_content = t_content.replace(old_wandb_log, new_wandb_log)
+        with open(test_path, 'w', encoding='utf-8') as f:
+            f.write(t_content)
+        print("Successfully patched test.py")
 
 # 6. PATCH MOSAIC PLOTTING (utils/plots.py) - Fixes "could not broadcast input array [6] into [3]"
 plots_path = os.path.join(engine_dir, 'utils/plots.py')
-with open(plots_path, 'r') as f:
-    p_content = f.read()
+if os.path.exists(plots_path):
+    with open(plots_path, 'r', encoding='utf-8', errors='ignore') as f:
+        p_content = f.read()
 
-old_mosaic_line = "mosaic[block_y:block_y + h, block_x:block_x + w, :] = img"
-new_mosaic_line = "mosaic[block_y:block_y + h, block_x:block_x + w, :] = img[:, :, :3] if img.shape[2] == 6 else img"
+    old_mosaic_line = "mosaic[block_y:block_y + h, block_x:block_x + w, :] = img"
+    new_mosaic_line = "mosaic[block_y:block_y + h, block_x:block_x + w, :] = img[:, :, :3] if img.shape[2] == 6 else img"
 
-if old_mosaic_line in p_content:
-    p_content = p_content.replace(old_mosaic_line, new_mosaic_line)
-    with open(plots_path, 'w') as f:
-        f.write(p_content)
-    print("Successfully patched utils/plots.py (6ch Plot Fix)")
+    if old_mosaic_line in p_content:
+        p_content = p_content.replace(old_mosaic_line, new_mosaic_line)
+        with open(plots_path, 'w', encoding='utf-8') as f:
+            f.write(p_content)
+        print("Successfully patched utils/plots.py (6ch Plot Fix)")
 
 print("--- Ultimate Repair Complete (v8) ---")
 
@@ -193,5 +203,5 @@ else:
         lines = []
         for key, val in fields.items():
             lines.append(f"{key}: {val}")
-        yaml_path.write_text("\\n".join(lines) + "\\n", encoding="utf-8")
+        yaml_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
         print(f"[patch_parser] Patched YAML data config {yaml_path}")

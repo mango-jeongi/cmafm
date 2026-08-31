@@ -54,6 +54,7 @@ Copy-Item -Force "data\yolov5l_cmafm_M3FD.yaml" "cft_engine\models\" -ErrorActio
 Copy-Item -Force "data\yolov5l_fusion_transformerx3_M3FD.yaml" "cft_engine\models\transformer\" -ErrorAction SilentlyContinue
 
 & $PYTHON_EXE src/engine/engine_fixes/patch_parser.py
+& $PYTHON_EXE jetson_deploy/scripts/install_checkpoint_compat.py --engine-dir cft_engine --compat-source jetson_deploy/compat/cmafm_checkpoint.py
 
 Write-Host "`n✅ Setup Complete!" -ForegroundColor Green
 Write-Host "To activate, use: & $VENV_PATH\Scripts\Activate.ps1"
