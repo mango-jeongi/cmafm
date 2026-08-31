@@ -311,8 +311,51 @@ def get_ffmpeg_binary():
     return None
 
 
+class MockSimulationDetector:
+    """Simulation & Demo Mode: Real-time multispectral inference simulation (zero weights required)."""
+    is_simulation = True
+    is_tensorrt = False
+
+    def __init__(self, mode: str = "fusion"):
+        self.mode = mode  # "fusion", "rgb", or "thermal"
+        self.last_inference_ms = 17.2
+
+    def detect(self, rgb_t: torch.Tensor, th_t: torch.Tensor, conf_thres: float = 0.25):
+        time.sleep(0.012)  # Simulate 17.2 ms forward pass
+        candidates = [
+            [120, 240, 195, 410, 1, 0.42, 0.91, 0.94],  # Pedestrian 1
+            [260, 220, 480, 390, 2, 0.88, 0.79, 0.96],  # Car 1
+            [40, 270, 110, 380, 1, 0.31, 0.85, 0.91],   # Pedestrian 2 in shadow
+            [510, 180, 560, 310, 5, 0.82, 0.18, 0.89],  # Street Lamp
+            [460, 250, 610, 380, 2, 0.76, 0.84, 0.93],  # Car 2
+        ]
+        boxes_list, scores_list, labels_list = [], [], []
+        for c in candidates:
+            x1, y1, x2, y2, label, rgb_c, th_c, fus_c = c
+            if self.mode == "rgb":
+                score = rgb_c + float(np.random.uniform(-0.02, 0.02))
+            elif self.mode == "thermal":
+                score = th_c + float(np.random.uniform(-0.02, 0.02))
+            else:
+                score = fus_c + float(np.random.uniform(-0.01, 0.01))
+            if score >= conf_thres:
+                boxes_list.append([x1, y1, x2, y2])
+                scores_list.append(score)
+                labels_list.append(label)
+
+        if not boxes_list:
+            return {"boxes": torch.zeros((0, 4)), "scores": torch.zeros((0,)), "labels": torch.zeros((0,), dtype=torch.int64)}
+        return {
+            "boxes": torch.tensor(boxes_list, dtype=torch.float32),
+            "scores": torch.tensor(scores_list, dtype=torch.float32),
+            "labels": torch.tensor(labels_list, dtype=torch.int64)
+        }
+
+
 @st.cache_resource(show_spinner=False)
 def load_model_cached(ckpt_path: str, device_str: str, model_type: str = "CMAFM-YOLO", inference_backend: str = "PyTorch"):
+    if model_type == "Demo / Simulation Mode (Zero Weights)":
+        return MockSimulationDetector("fusion"), None, torch.device(device_str)
     if inference_backend == "TensorRT" or model_type == "TensorRT (FP16 Engine)":
         return TensorRTCMAFMAdapter(ckpt_path), None, torch.device("cpu")
     from config import Config
@@ -369,6 +412,8 @@ def load_model_cached(ckpt_path: str, device_str: str, model_type: str = "CMAFM-
 @st.cache_resource(show_spinner=False)
 def load_single_modal_models(ckpt_path: str, device_str: str):
     """Load RGB-only / Thermal-only baseline checkpoints."""
+    if st.session_state.get("model_type") == "Demo / Simulation Mode (Zero Weights)":
+        return MockSimulationDetector("rgb"), MockSimulationDetector("thermal"), torch.device(device_str)
     from config import Config
     from ablation_models import SingleModalDetector
 
@@ -414,6 +459,8 @@ def run_single_inference(model, rgb_t, th_t, device):
         return {"boxes": torch.zeros((0, 4), device=device), 
                 "scores": torch.zeros((0,), device=device), 
                 "labels": torch.zeros((0,), dtype=torch.int64, device=device)}
+    if getattr(model, "is_simulation", False):
+        return model.detect(rgb_t, th_t)
     target_dtype = torch.float16 if device.type == "cuda" else torch.float32
     rgb_t = rgb_t.to(device, dtype=target_dtype, non_blocking=True)
     th_t  = th_t.to(device, dtype=target_dtype, non_blocking=True)
@@ -440,6 +487,9 @@ def preprocess_pair(rgb_np: np.ndarray, thermal_np: np.ndarray):
 
 @torch.inference_mode()
 def run_inference(model, rgb_t, th_t, device, conf_thres=0.25, iou_thres=0.45):
+    if getattr(model, "is_simulation", False):
+        return model.detect(rgb_t, th_t, conf_thres=conf_thres)
+
     if getattr(model, "is_tensorrt", False):
         return model.detect(rgb_t, th_t)
 
@@ -669,16 +719,17 @@ with st.sidebar:
 
     # ── Model Selection ──
     st.markdown("#### [MODEL CONFIGURATION]")
-    model_options = ["CMAFM-YOLO", "Faster R-CNN (CMAFM)"]
-    if TENSORRT_AVAILABLE:
-        model_options.append("TensorRT (FP16 Engine)")
-    else:
-        model_options.append("TensorRT (FP16 Engine)")
+    model_options = [
+        "Demo / Simulation Mode (Zero Weights)",
+        "CMAFM-YOLO",
+        "Faster R-CNN (CMAFM)",
+        "TensorRT (FP16 Engine)"
+    ]
 
     model_type = st.selectbox(
         "Architecture",
         model_options,
-        help="Select fusion architecture. CMAFM-YOLO / TensorRT is recommended for real-time video tracking."
+        help="Select fusion architecture. Choose Simulation Mode to test all interactive tabs without downloading weights."
     )
     st.session_state.model_type = model_type
     
@@ -688,40 +739,44 @@ with st.sidebar:
         st.session_state.model = None
     st.session_state.prev_model_type = model_type
     
-    if model_type == "TensorRT (FP16 Engine)":
+    if model_type == "Demo / Simulation Mode (Zero Weights)":
+        ckpt_path = "simulation"
+        st.caption("Verified Mode: `Synthetic / Interactive Demo` (Zero Weights Required)")
+    elif model_type == "TensorRT (FP16 Engine)":
         default_path = str(TENSORRT_ENGINE)
     elif model_type == "CMAFM-YOLO":
         default_path = DEFAULT_CMAFM_YOLO_CKPT
     else:
         default_path = DEFAULT_CKPT
 
-    use_default_ckpt = st.checkbox(
-        f"Use verified weights ({Path(default_path).name})",
-        value=Path(default_path).exists(),
-        key=f"use_default_{model_type}"
-    )
-    if use_default_ckpt:
-        ckpt_path = default_path
-        if Path(ckpt_path).exists():
-            st.caption(f"Verified Checkpoint: `{Path(ckpt_path).name}`")
+    if model_type != "Demo / Simulation Mode (Zero Weights)":
+        use_default_ckpt = st.checkbox(
+            f"Use verified weights ({Path(default_path).name})",
+            value=Path(default_path).exists(),
+            key=f"use_default_{model_type}"
+        )
+        if use_default_ckpt:
+            ckpt_path = default_path
+            if Path(ckpt_path).exists():
+                st.caption(f"Verified Checkpoint: `{Path(ckpt_path).name}`")
+            else:
+                st.error("Checkpoint not found at default location.")
+                ckpt_path = st.text_input("Manual Path", value="", key=f"ckpt_manual_{model_type}")
         else:
-            st.error("Checkpoint not found at default location.")
-            ckpt_path = st.text_input("Manual Path", value="", key=f"ckpt_manual_{model_type}")
-    else:
-        if model_type == "TensorRT (FP16 Engine)":
-            rel_default = "jetson_deploy/artifacts/cmafm_yolo_640_fp16.engine"
-        elif model_type == "CMAFM-YOLO":
-            rel_default = "weights/best.pt"
-        else:
-            rel_default = "runs/best.pth"
-        ckpt_path = st.text_input("Checkpoint Path", value=rel_default, key=f"ckpt_custom_{model_type}")
+            if model_type == "TensorRT (FP16 Engine)":
+                rel_default = "jetson_deploy/artifacts/cmafm_yolo_640_fp16.engine"
+            elif model_type == "CMAFM-YOLO":
+                rel_default = "weights/best.pt"
+            else:
+                rel_default = "runs/best.pth"
+            ckpt_path = st.text_input("Checkpoint Path", value=rel_default, key=f"ckpt_custom_{model_type}")
 
-    if ckpt_path:
-        p = Path(ckpt_path)
-        if not p.is_absolute():
-            resolved_p = (repo_root / p).resolve()
-            if resolved_p.exists():
-                ckpt_path = str(resolved_p)
+        if ckpt_path:
+            p = Path(ckpt_path)
+            if not p.is_absolute():
+                resolved_p = (repo_root / p).resolve()
+                if resolved_p.exists():
+                    ckpt_path = str(resolved_p)
 
     # ── Computing Hardware ──
     st.markdown("#### [COMPUTE ENGINE]")
@@ -741,8 +796,18 @@ with st.sidebar:
     st.markdown("<br>", unsafe_allow_html=True)
     if st.button("START SYSTEM", type="primary", width="stretch"):
         st.cache_resource.clear()
-        if not ckpt_path or not Path(ckpt_path).exists():
-            st.error("Checkpoint file not found.")
+        if model_type == "Demo / Simulation Mode (Zero Weights)":
+            with st.spinner("Initializing interactive simulation engine..."):
+                model, cfg, device = load_model_cached("", device_str, model_type)
+                st.session_state.model  = model
+                st.session_state.device = device
+                st.session_state.cfg    = cfg
+                rgb_m, th_m, _ = load_single_modal_models("", device_str)
+                st.session_state.rgb_only_model     = rgb_m
+                st.session_state.thermal_only_model = th_m
+            st.success("SYSTEM ONLINE // Simulation Mode (58 FPS Target)")
+        elif not ckpt_path or not Path(ckpt_path).exists():
+            st.error("Checkpoint file not found. Select 'Demo / Simulation Mode' to run without weights.")
         else:
             with st.spinner("Initializing multispectral detection engine..."):
                 backend = "TensorRT" if model_type == "TensorRT (FP16 Engine)" else "PyTorch"

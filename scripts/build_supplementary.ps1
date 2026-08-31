@@ -33,7 +33,7 @@ try {
     Write-Host "`n[*] Copying repository to temp directory..." -ForegroundColor Yellow
     
     # Robocopy to temp excluding git, caches, weights, and build dirs
-    $excludeDirs = @(".git", ".venv", "venv", "env", "__pycache__", ".ipynb_checkpoints", "cft_engine", "logs", "build", "dist", ".idea", ".vscode")
+    $excludeDirs = @(".git", ".venv", "venv", "env", "__pycache__", ".ipynb_checkpoints", "logs", "build", "dist", ".idea", ".vscode")
     $excludeFiles = @(".env", "*.pt", "*.pth", "*.ckpt", "*.engine", "*.onnx", "*.zip", "desktop.ini", "Thumbs.db", ".DS_Store", "ssh_tunnel_watchdog.log")
     
     if (-not $WithVideos) {

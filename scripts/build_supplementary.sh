@@ -67,8 +67,8 @@ find . -name "*.ckpt" -exec rm -f {} + 2>/dev/null || true
 find . -name "*.engine" -exec rm -f {} + 2>/dev/null || true
 find . -name "*.onnx" -exec rm -f {} + 2>/dev/null || true
 
-# ── Remove the cloned base engine (setup script re-clones it) ──────────────
-rm -rf code/cft_engine
+# ── Clean cft_engine internal git metadata ──────────────────────────────────
+rm -rf code/cft_engine/.git 2>/dev/null || true
 
 # ── Remove HPC logs and training run artifacts ─────────────────────────────
 rm -rf code/logs
