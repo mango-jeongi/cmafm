@@ -869,8 +869,15 @@ with st.sidebar:
 # ══════════════════════════════════════════════════════════════════════════════
 
 # Header Banner
-st.markdown("""
-<div style='background: #0f172a; border: 1px solid #1e293b; border-radius: 6px; padding: 16px 20px; margin-bottom: 18px;'>
+is_sim = st.session_state.get("model_type", "Demo / Simulation Mode (Zero Weights)") == "Demo / Simulation Mode (Zero Weights)"
+status_badge = (
+    "<span style='background:#f59e0b22; border:1px solid #f59e0b; color:#f59e0b; padding:3px 8px; border-radius:4px; font-weight:700;'>STATUS: SIMULATION DEMO</span>"
+    if is_sim
+    else "<span style='background:#10b98122; border:1px solid #10b981; color:#10b981; padding:3px 8px; border-radius:4px; font-weight:700;'>STATUS: ONLINE</span>"
+)
+
+st.markdown(f"""
+<div style='background: #0f172a; border: 1px solid #1e293b; border-radius: 6px; padding: 16px 20px; margin-bottom: 14px;'>
     <div style='display:flex; justify-content:space-between; align-items:center;'>
         <div>
             <div style='font-size:0.75rem; font-family:"JetBrains Mono", monospace; color:#38bdf8; font-weight:700; letter-spacing:0.12em;'>
@@ -884,12 +891,29 @@ st.markdown("""
             </div>
         </div>
         <div style='text-align:right; font-family:"JetBrains Mono", monospace; font-size:0.75rem;'>
-            <span style='background:#10b98122; border:1px solid #10b981; color:#10b981; padding:3px 8px; border-radius:4px; font-weight:700;'>STATUS: ONLINE</span><br>
+            {status_badge}<br>
             <span style='color:#64748b; font-size:0.7rem; margin-top:4px; display:inline-block;'>WACV 2027 APPLICATIONS</span>
         </div>
     </div>
 </div>
 """, unsafe_allow_html=True)
+
+if is_sim:
+    st.markdown("""
+    <div style='background: #451a03; border: 2px solid #f59e0b; border-radius: 6px; padding: 12px 18px; margin-bottom: 18px;'>
+        <div style='display:flex; align-items:center; gap:12px;'>
+            <span style='font-size:1.5rem;'>⚠️</span>
+            <div>
+                <div style='font-size:0.85rem; font-family:"JetBrains Mono", monospace; font-weight:800; color:#fbbf24; text-transform:uppercase; letter-spacing:0.06em;'>
+                    DEMO / SIMULATION MODE ACTIVE (ZERO WEIGHTS REQUIRED)
+                </div>
+                <div style='color:#fde68a; font-size:0.82rem; margin-top:3px; line-height:1.4;'>
+                    This mode is provided for <strong>dashboard workflow and interface demonstration only</strong>. Bounding boxes and detections in this mode are <strong>fixed / synthetic mock outputs</strong> to allow testing without downloading multi-gigabyte weight checkpoints. To evaluate real trained model predictions, select <code>CMAFM-YOLO</code> or <code>TensorRT</code> in the sidebar.
+                </div>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
 model_ready = st.session_state.model is not None
 if not model_ready:
