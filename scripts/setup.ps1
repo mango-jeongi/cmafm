@@ -56,5 +56,9 @@ Copy-Item -Force "data\yolov5l_fusion_transformerx3_M3FD.yaml" "cft_engine\model
 & $PYTHON_EXE src/engine/engine_fixes/patch_parser.py
 & $PYTHON_EXE jetson_deploy/scripts/install_checkpoint_compat.py --engine-dir cft_engine --compat-source jetson_deploy/compat/cmafm_checkpoint.py
 
+if (Test-Path "spc_kit/tools/apply_kit.py") {
+    & $PYTHON_EXE spc_kit/tools/apply_kit.py --engine cft_engine
+}
+
 Write-Host "`n✅ Setup Complete!" -ForegroundColor Green
 Write-Host "To activate, use: & $VENV_PATH\Scripts\Activate.ps1"

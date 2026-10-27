@@ -1,3 +1,4 @@
+from .cmafm_variants import CMAFMVar
 from .cmafm_checkpoint import CMAFM_Fusion
 # YOLOv5 YOLO-specific modules
 
@@ -521,6 +522,9 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
         elif m is CMAFM_Fusion:
             c2 = ch[f[0]]
             args = [c2]
+        elif m is CMAFMVar:
+            c2 = ch[f[0]]
+            args = [c2, *args[1:]]
         elif m is Add:
             # print("ch[f]", f, ch[f[0]])
             c2 = ch[f[0]]
@@ -595,6 +599,9 @@ def parse_model_rgb_ir(d, ch):  # model_dict, input_channels(3)
         elif m is CMAFM_Fusion:
             c2 = ch[f[0]]
             args = [c2]
+        elif m is CMAFMVar:
+            c2 = ch[f[0]]
+            args = [c2, *args[1:]]
         elif m is Detect:
             args.append([ch[x] for x in f])
             if isinstance(args[1], int):  # number of anchors

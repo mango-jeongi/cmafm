@@ -1,0 +1,6 @@
+rgb_only
+thermal_only
+dual_add
+ctrl_concat_1x1
+cft
+cmafm_full

@@ -1,0 +1,6 @@
+cmafm_channel_only
+cmafm_spatial_only
+cmafm_no_alpha
+cmafm_v_sigmoid
+ctrl_se_self
+ctrl_cbam_self

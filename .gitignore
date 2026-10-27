@@ -57,3 +57,8 @@ CMAFM_Supplementary_*.zip
 
 # SSH tunnel logs
 ssh_tunnel_watchdog.log
+
+# Generated SPC split paths, caches, and experiment results
+/data/spc_split/
+/data/spc_subsets/
+/results/

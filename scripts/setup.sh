@@ -1,6 +1,11 @@
 #!/bin/bash
 # scripts/setup.sh
 
+set -euo pipefail
+VENV=${SPC_VENV:-$PWD/.venv}
+UV=${UV_BIN:-$HOME/.local/bin/uv}
+export UV_PROJECT_ENVIRONMENT="$VENV"
+uvpy() { "$UV" run --no-project --python "$VENV/bin/python" "$@"; }
 echo "Setting up CMAFM..."
 
 # 1. Setup .env
@@ -27,7 +32,10 @@ cp data/yolov5l_fusion_transformerx3_M3FD.yaml cft_engine/models/transformer/ 2>
 
 # 4. Run automated ultimate repair (patch_parser)
 echo "Running ultimate repair parser to inject automated fixes into cft_engine..."
-python3 src/engine/engine_fixes/patch_parser.py
-python3 jetson_deploy/scripts/install_checkpoint_compat.py --engine-dir cft_engine --compat-source jetson_deploy/compat/cmafm_checkpoint.py 2>/dev/null || true
+uvpy src/engine/engine_fixes/patch_parser.py
+uvpy jetson_deploy/scripts/install_checkpoint_compat.py --engine-dir cft_engine --compat-source jetson_deploy/compat/cmafm_checkpoint.py 2>/dev/null || true
 
+if [ -f spc_kit/tools/apply_kit.py ]; then
+    uvpy spc_kit/tools/apply_kit.py --engine cft_engine
+fi
 echo "Setup complete."

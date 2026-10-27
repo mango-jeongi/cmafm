@@ -63,7 +63,7 @@ def train(hyp, opt, device, tb_writer=None):
     # Configure
     plots = not opt.evolve  # create plots
     cuda = device.type != 'cpu'
-    init_seeds(2 + rank)
+    init_seeds(opt.seed + max(rank, 0))
     with open(opt.data, encoding='utf-8') as f:
         data_dict = yaml.safe_load(f)  # data dict
     is_coco = opt.data.endswith('coco.yaml')
@@ -409,7 +409,7 @@ def train(hyp, opt, device, tb_writer=None):
                     wandb_logger.log({tag: x})  # W&B
 
             # Update best mAP
-            fi = fitness(np.array(results).reshape(1, -1))  # weighted combination of [P, R, mAP@.5, mAP@.5-.95]
+            fi = fitness(np.array(results).reshape(1, -1)[:, [0, 1, 2, 4]])  # weighted combination of [P, R, mAP@.5, mAP@.5-.95]
             if fi > best_fitness:
                 best_fitness = fi
             wandb_logger.end_epoch(best_result=best_fitness == fi)
@@ -501,7 +501,7 @@ def train_rgb_ir(hyp, opt, device, tb_writer=None):
     # Configure
     plots = not opt.evolve  # create plots
     cuda = device.type != 'cpu'
-    init_seeds(2 + rank)
+    init_seeds(opt.seed + max(rank, 0))
     with open(opt.data, encoding='utf-8') as f:
         data_dict = yaml.safe_load(f)  # data dict
     is_coco = opt.data.endswith('coco.yaml')
@@ -862,7 +862,7 @@ def train_rgb_ir(hyp, opt, device, tb_writer=None):
                     wandb_logger.log({tag: x})  # W&B
 
             # Update best mAP
-            fi = fitness(np.array(results).reshape(1, -1))  # weighted combination of [P, R, mAP@.5, mAP@.5-.95]
+            fi = fitness(np.array(results).reshape(1, -1)[:, [0, 1, 2, 4]])  # weighted combination of [P, R, mAP@.5, mAP@.5-.95]
             if fi > best_fitness:
                 best_fitness = fi
             wandb_logger.end_epoch(best_result=best_fitness == fi)

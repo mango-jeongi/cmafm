@@ -972,6 +972,9 @@ class LoadMultiModalImagesAndLabels(Dataset):  # for training/testing
         self.labels_ir = list(labels_ir)
         self.shapes_ir = np.array(shapes_ir, dtype=np.float64)
         self.img_files_ir = list(cache_ir.keys())  # update
+        if [Path(p).stem for p in self.img_files_rgb] != [Path(p).stem for p in self.img_files_ir]:
+            raise ValueError("SPC RGB/IR cache filtering produced different image pairs")
+
         self.label_files_ir = img2label_paths(cache_ir.keys())  # update
         if single_cls:
             for x in self.labels_ir:
