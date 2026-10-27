@@ -143,3 +143,9 @@ pairs, 840 M3FD test pairs, and 1,013 aligned FLIR test pairs. Verify the FLIR s
 provenance before describing that subset as the full official ADAS v2 test set.
 The fixed luminance thresholds produce 58/782 night/day M3FD test pairs and
 20/993 night/day FLIR test pairs; these are brightness-defined subsets.
+
+Final evaluation now audits all 60 training logs for epochs 0–99 and checks the
+100-epoch/seed/batch/image-size protocol before loading checkpoints. After
+aggregation, `results/audit_all.json` records complete 360-row model/seed/subset
+coverage, identical evaluated samples across models, all five alpha analyses,
+and hashes of the final paper artifacts. The audit rejects incomplete results.
