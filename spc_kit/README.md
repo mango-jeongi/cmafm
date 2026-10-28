@@ -149,3 +149,20 @@ Final evaluation now audits all 60 training logs for epochs 0–99 and checks the
 aggregation, `results/audit_all.json` records complete 360-row model/seed/subset
 coverage, identical evaluated samples across models, all five alpha analyses,
 and hashes of the final paper artifacts. The audit rejects incomplete results.
+
+## Checkpoint cleanup recovery (2026-10-28)
+
+One Dual+Concat seed completed epochs 0–99 but hit its 32 GiB host-memory limit
+while stripping checkpoint optimizer state. Its original best/last checkpoints
+were preserved under `runs/spc_recovery_originals/`. The separate CPU-only
+`slurm/finalize.sh` job validates complete training history and selection fitness,
+checks that the learned tensors are unchanged, performs CPU inference, and
+atomically finalizes unstripped checkpoints. It does not retrain or select a new
+model. It also validates checkpoints that are already finalized.
+
+Current training/evaluation launchers request 64 GiB RAM. Pending tasks in the
+existing arrays were updated to 64 GiB; running tasks were left intact. Final
+CPU validation runs after either terminal outcome of both training arrays. The
+GPU evaluation depends on successful CPU validation, whose full-matrix training
+audit requires all 60 runs to contain all 100 epochs. A genuinely incomplete run
+therefore blocks evaluation instead of being silently accepted.
