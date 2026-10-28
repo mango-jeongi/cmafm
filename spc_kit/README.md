@@ -166,3 +166,11 @@ CPU validation runs after either terminal outcome of both training arrays. The
 GPU evaluation depends on successful CPU validation, whose full-matrix training
 audit requires all 60 runs to contain all 100 epochs. A genuinely incomplete run
 therefore blocks evaluation instead of being silently accepted.
+
+The October 28 batch also queues `slurm/eval_ready.sh` for the seven groups whose
+five seeds have already completed (35 runs). It requires complete 100-epoch
+histories and writes the same fixed-subset metrics to `results/eval.csv`. The
+final evaluation depends on this job as well as full-matrix checkpoint
+finalization, so only one process writes this CSV at a time. Already evaluated
+rows are skipped; the final audit still requires all 360 unique rows. Early test
+results do not change training or checkpoint selection for remaining runs.

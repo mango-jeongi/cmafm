@@ -17,6 +17,8 @@ ap.add_argument("--weights", default="best.pt", help="best.pt (selected on sel) 
 ap.add_argument("--only", default="", help="comma-separated subset names (default: all)")
 ap.add_argument("--device", default="0")
 ap.add_argument("--expected-runs", type=int, default=0)
+ap.add_argument("--configs", default="", help="Optional comma-separated model configurations")
+ap.add_argument("--require-complete", action="store_true", help="Require the full 100-epoch training history before test evaluation")
 a = ap.parse_args()
 eng = Path(a.engine).resolve()
 subsets = sorted(Path(a.subsets).resolve().glob("*.yaml"))
@@ -35,7 +37,17 @@ if new:
     w.writeheader()
 ROW = re.compile(r"^\s*(\S+)\s+(\d+)\s+(\d+)\s+([\d.eE+\-]+)\s+([\d.eE+\-]+)\s+([\d.eE+\-]+)\s+([\d.eE+\-]+)\s+([\d.eE+\-]+)\s*$")
 weights = sorted(Path(a.runs).resolve().glob(f"*/seed_*/**/weights/{a.weights}"))
+if a.configs:
+    requested = set(a.configs.split(","))
+    weights = [p for p in weights if p.relative_to(Path(a.runs).resolve()).parts[0] in requested]
+    found = {p.relative_to(Path(a.runs).resolve()).parts[0] for p in weights}
+    if found != requested:
+        raise ValueError(f"Configuration coverage mismatch: requested={requested}, found={found}")
 assert weights and subsets, "No checkpoints or subset YAMLs found"
+if a.require_complete:
+    from finalize_checkpoints import validate_training
+    for checkpoint in weights:
+        validate_training(checkpoint.parent.parent)
 if a.expected_runs:
     assert len(weights) == a.expected_runs, f"Expected {a.expected_runs} checkpoints, found {len(weights)}"
 for wpath in weights:
