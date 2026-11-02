@@ -61,4 +61,7 @@ ssh_tunnel_watchdog.log
 # Generated SPC split paths, caches, and experiment results
 /data/spc_split/
 /data/spc_subsets/
-/results/
+/results/*
+!/results/tables.md
+!/results/eval.csv
+!/results/alpha_seed*.json
