@@ -1,0 +1,143 @@
+{
+  "created_utc": "2026-11-17T05:05:16.263042+00:00",
+  "backend": "TensorRT FP16",
+  "engine": "/home/student/cmafm_stage/engines/cmafm_full_seed1_fp16.engine",
+  "dataset": "M3FD",
+  "manifest": "/home/student/cmafm_stage/manifests/m3fd_test_840.json",
+  "power_mode": "NV Power Mode: MAXN_SUPER | 2",
+  "preloaded_images": true,
+  "warmup_passes": 5,
+  "images": 840,
+  "image_size": 640,
+  "batch_size": 1,
+  "confidence_threshold": 0.001,
+  "nms_iou_threshold": 0.6,
+  "ground_truth_boxes": 7083,
+  "detections_after_nms": 33568,
+  "loop_wall_seconds": 73.63296326698037,
+  "timing": {
+    "preprocess": {
+      "mean_ms": 23.557505060064916,
+      "std_ms": 3.6256550009207613,
+      "median_ms": 23.227675032103434,
+      "p95_ms": 28.961109573720023,
+      "p99_ms": 33.544836433138705,
+      "min_ms": 13.952217996120453,
+      "max_ms": 58.34187305299565,
+      "fps": 42.44931699898972
+    },
+    "inference": {
+      "mean_ms": 43.41127581193134,
+      "std_ms": 1.4155939912324065,
+      "median_ms": 43.40572448563762,
+      "p95_ms": 43.908408770221286,
+      "p99_ms": 44.17723739577923,
+      "min_ms": 39.465865993406624,
+      "max_ms": 73.4138999832794,
+      "fps": 23.035489773031635
+    },
+    "postprocess_incl_nms": {
+      "mean_ms": 8.230430394524731,
+      "std_ms": 4.441198209495017,
+      "median_ms": 8.05098851560615,
+      "p95_ms": 8.976562228053808,
+      "p99_ms": 9.476845648605376,
+      "min_ms": 6.56278501264751,
+      "max_ms": 135.85212000180036,
+      "fps": 121.50032890931766
+    },
+    "end_to_end": {
+      "mean_ms": 75.19921126652099,
+      "std_ms": 5.995880512701016,
+      "median_ms": 74.66073997784406,
+      "p95_ms": 80.74642459687311,
+      "p99_ms": 86.34744438051713,
+      "min_ms": 65.15817198669538,
+      "max_ms": 198.53370601776987,
+      "fps": 13.298011816318136
+    },
+    "decode_excluded_from_e2e": {
+      "mean_ms": 0.0,
+      "std_ms": 0.0,
+      "median_ms": 0.0,
+      "p95_ms": 0.0,
+      "p99_ms": 0.0,
+      "min_ms": 0.0,
+      "max_ms": 0.0,
+      "fps": 0.0
+    }
+  },
+  "tegrastats": {
+    "sample_count": 696,
+    "vdd_in_mean_w": 11.849586206896554,
+    "vdd_in_std_w": 0.8666955964675183,
+    "vdd_in_median_w": 11.964,
+    "vdd_in_min_w": 4.782,
+    "vdd_in_max_w": 13.052,
+    "gr3d_freq_mean_pct": 47.48419540229885,
+    "gpu_temp_mean_c": 51.45752011494253,
+    "gpu_temp_max_c": 54.625
+  },
+  "accuracy": {
+    "map50": 0.8777782679775742,
+    "map50_95": 0.5898592418982646,
+    "mean_precision": 0.8888033943145367,
+    "mean_recall": 0.833724845465926,
+    "per_class": {
+      "People": {
+        "class_id": 0,
+        "ground_truth_boxes": 2255,
+        "precision": 0.9086502075214459,
+        "recall": 0.788470066518847,
+        "ap50": 0.8615465225853469,
+        "ap50_95": 0.5313214385642053
+      },
+      "Car": {
+        "class_id": 1,
+        "ground_truth_boxes": 3845,
+        "precision": 0.9080616478231938,
+        "recall": 0.883224967490247,
+        "ap50": 0.9285776727083087,
+        "ap50_95": 0.6766565947224655
+      },
+      "Bus": {
+        "class_id": 2,
+        "ground_truth_boxes": 129,
+        "precision": 0.8714090805866995,
+        "recall": 0.8837209302325582,
+        "ap50": 0.9131959172878039,
+        "ap50_95": 0.7229191212668835
+      },
+      "Motorcycle": {
+        "class_id": 3,
+        "ground_truth_boxes": 131,
+        "precision": 0.8795938623918517,
+        "recall": 0.7249481349384833,
+        "ap50": 0.8118024894799836,
+        "ap50_95": 0.4746597041977572
+      },
+      "Lamp": {
+        "class_id": 4,
+        "ground_truth_boxes": 514,
+        "precision": 0.8973786361241937,
+        "recall": 0.8846643994527417,
+        "ap50": 0.8966010579329902,
+        "ap50_95": 0.4991599925756832
+      },
+      "Truck": {
+        "class_id": 5,
+        "ground_truth_boxes": 209,
+        "precision": 0.8677269314398356,
+        "recall": 0.8373205741626795,
+        "ap50": 0.8549459478710116,
+        "ap50_95": 0.6344386000625926
+      }
+    }
+  },
+  "host": {
+    "platform": "Linux-6.8.12-1021-tegra-aarch64-with-glibc2.39",
+    "machine": "aarch64",
+    "python": "3.12.3",
+    "torch": "2.14.1+cu130"
+  }
+}

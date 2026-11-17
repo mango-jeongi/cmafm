@@ -1,0 +1,62 @@
+{
+  "backend": "PyTorch FP32 (unfused, 640x640, batch 1)",
+  "weights": "/home/mingu/spc_stage/work/runs/spc/cmafm_full/seed_1/train/weights/best.pt",
+  "dataset": "M3FD",
+  "images": 840,
+  "ground_truth_boxes": 7083,
+  "detections_after_nms": 33546,
+  "map50": 0.8785076437345434,
+  "map50_95": 0.5919646985749115,
+  "mean_precision": 0.8893305239262524,
+  "mean_recall": 0.8338054075906561,
+  "per_class": {
+    "People": {
+      "class_id": 0,
+      "ground_truth_boxes": 2255,
+      "precision": 0.9087745198315729,
+      "recall": 0.7866962305986697,
+      "ap50": 0.8625540911617846,
+      "ap50_95": 0.5342856342545329
+    },
+    "Car": {
+      "class_id": 1,
+      "ground_truth_boxes": 3845,
+      "precision": 0.9082994158271395,
+      "recall": 0.8835979850693141,
+      "ap50": 0.9286331164144188,
+      "ap50_95": 0.6769419688596445
+    },
+    "Bus": {
+      "class_id": 2,
+      "ground_truth_boxes": 129,
+      "precision": 0.8713583826635979,
+      "recall": 0.8837209302325582,
+      "ap50": 0.9128301724211005,
+      "ap50_95": 0.7242330270093535
+    },
+    "Motorcycle": {
+      "class_id": 3,
+      "ground_truth_boxes": 131,
+      "precision": 0.879396953627272,
+      "recall": 0.7251908396946565,
+      "ap50": 0.811751812286406,
+      "ap50_95": 0.4783413548741697
+    },
+    "Lamp": {
+      "class_id": 4,
+      "ground_truth_boxes": 514,
+      "precision": 0.8993210565521269,
+      "recall": 0.8863058857860587,
+      "ap50": 0.9002635480378254,
+      "ap50_95": 0.5019235335724187
+    },
+    "Truck": {
+      "class_id": 5,
+      "ground_truth_boxes": 209,
+      "precision": 0.868832815055805,
+      "recall": 0.8373205741626795,
+      "ap50": 0.8550131220857242,
+      "ap50_95": 0.6360626728793499
+    }
+  }
+}

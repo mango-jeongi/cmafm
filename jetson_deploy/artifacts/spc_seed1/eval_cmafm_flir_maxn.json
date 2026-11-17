@@ -1,0 +1,101 @@
+{
+  "created_utc": "2026-11-17T05:07:19.037885+00:00",
+  "backend": "TensorRT FP16",
+  "engine": "/home/student/cmafm_stage/engines/cmafm_full_seed1_fp16.engine",
+  "dataset": "FLIR Aligned (effective)",
+  "manifest": "/home/student/cmafm_stage/manifests/flir_test_1011.json",
+  "power_mode": "NV Power Mode: MAXN_SUPER | 2",
+  "preloaded_images": true,
+  "warmup_passes": 5,
+  "images": 1011,
+  "image_size": 640,
+  "batch_size": 1,
+  "confidence_threshold": 0.001,
+  "nms_iou_threshold": 0.6,
+  "ground_truth_boxes": 8214,
+  "detections_after_nms": 37624,
+  "loop_wall_seconds": 74.50905475998297,
+  "timing": {
+    "preprocess": {
+      "mean_ms": 11.044297249479685,
+      "std_ms": 2.0166713169036945,
+      "median_ms": 10.466356994584203,
+      "p95_ms": 14.869782520690933,
+      "p99_ms": 15.432615793542936,
+      "min_ms": 6.3936280203051865,
+      "max_ms": 15.755409025587142,
+      "fps": 90.54446628979599
+    },
+    "inference": {
+      "mean_ms": 40.72396674745695,
+      "std_ms": 1.3390466647529364,
+      "median_ms": 40.179456991609186,
+      "p95_ms": 43.52685049525462,
+      "p99_ms": 43.817679124185815,
+      "min_ms": 39.32263201568276,
+      "max_ms": 45.861991005949676,
+      "fps": 24.555564692441116
+    },
+    "postprocess_incl_nms": {
+      "mean_ms": 8.904016993027438,
+      "std_ms": 0.6624206520346546,
+      "median_ms": 8.886501949746162,
+      "p95_ms": 9.895955998217687,
+      "p99_ms": 10.194604011485353,
+      "min_ms": 6.545857002492994,
+      "max_ms": 16.37661101995036,
+      "fps": 112.30886023500184
+    },
+    "end_to_end": {
+      "mean_ms": 60.67228098996407,
+      "std_ms": 2.160051397324186,
+      "median_ms": 60.569819004740566,
+      "p95_ms": 64.06860900460742,
+      "p99_ms": 65.08662386913784,
+      "min_ms": 54.65607700170949,
+      "max_ms": 69.96983999852091,
+      "fps": 16.481991177576003
+    },
+    "decode_excluded_from_e2e": {
+      "mean_ms": 0.0,
+      "std_ms": 0.0,
+      "median_ms": 0.0,
+      "p95_ms": 0.0,
+      "p99_ms": 0.0,
+      "min_ms": 0.0,
+      "max_ms": 0.0,
+      "fps": 0.0
+    }
+  },
+  "tegrastats": {},
+  "accuracy": {
+    "map50": 0.8809393318544212,
+    "map50_95": 0.5180178297455302,
+    "mean_precision": 0.8800925442269787,
+    "mean_recall": 0.8083270495396946,
+    "per_class": {
+      "People": {
+        "class_id": 0,
+        "ground_truth_boxes": 4104,
+        "precision": 0.8757921354878163,
+        "recall": 0.7753411306042886,
+        "ap50": 0.8610848780513213,
+        "ap50_95": 0.438383446493959
+      },
+      "Car": {
+        "class_id": 1,
+        "ground_truth_boxes": 4110,
+        "precision": 0.8843929529661412,
+        "recall": 0.8413129684751007,
+        "ap50": 0.900793785657521,
+        "ap50_95": 0.5976522129971014
+      }
+    }
+  },
+  "host": {
+    "platform": "Linux-6.8.12-1021-tegra-aarch64-with-glibc2.39",
+    "machine": "aarch64",
+    "python": "3.12.3",
+    "torch": "2.14.1+cu130"
+  }
+}

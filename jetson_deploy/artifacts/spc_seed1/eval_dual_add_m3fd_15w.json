@@ -1,0 +1,143 @@
+{
+  "created_utc": "2026-11-17T05:02:41.891832+00:00",
+  "backend": "TensorRT FP16",
+  "engine": "/home/student/cmafm_stage/engines/dual_add_seed1_fp16.engine",
+  "dataset": "M3FD",
+  "manifest": "/home/student/cmafm_stage/manifests/m3fd_test_840.json",
+  "power_mode": "NV Power Mode: 15W | 0",
+  "preloaded_images": true,
+  "warmup_passes": 5,
+  "images": 840,
+  "image_size": 640,
+  "batch_size": 1,
+  "confidence_threshold": 0.001,
+  "nms_iou_threshold": 0.6,
+  "ground_truth_boxes": 7083,
+  "detections_after_nms": 34493,
+  "loop_wall_seconds": 86.28296647302341,
+  "timing": {
+    "preprocess": {
+      "mean_ms": 25.577666019810188,
+      "std_ms": 3.2631624782529594,
+      "median_ms": 25.452264002524316,
+      "p95_ms": 30.876402818830684,
+      "p99_ms": 33.31099962349981,
+      "min_ms": 14.83281800756231,
+      "max_ms": 44.9270709650591,
+      "fps": 39.09660870641945
+    },
+    "inference": {
+      "mean_ms": 52.62347943457176,
+      "std_ms": 1.240847225586388,
+      "median_ms": 52.569455991033465,
+      "p95_ms": 53.206125475117005,
+      "p99_ms": 53.41750118182972,
+      "min_ms": 50.839948002249,
+      "max_ms": 77.89654599037021,
+      "fps": 19.002924374153704
+    },
+    "postprocess_incl_nms": {
+      "mean_ms": 9.379590009172846,
+      "std_ms": 0.7600819028261484,
+      "median_ms": 9.377746522659436,
+      "p95_ms": 10.609483774169348,
+      "p99_ms": 11.1234801937826,
+      "min_ms": 6.885416980367154,
+      "max_ms": 14.250305015593767,
+      "fps": 106.61446811876019
+    },
+    "end_to_end": {
+      "mean_ms": 87.58073546355479,
+      "std_ms": 3.7691909640009222,
+      "median_ms": 87.30330399703234,
+      "p95_ms": 93.1380314315902,
+      "p99_ms": 95.34296078665648,
+      "min_ms": 72.55818299017847,
+      "max_ms": 131.8155589979142,
+      "fps": 11.41803610927808
+    },
+    "decode_excluded_from_e2e": {
+      "mean_ms": 0.0,
+      "std_ms": 0.0,
+      "median_ms": 0.0,
+      "p95_ms": 0.0,
+      "p99_ms": 0.0,
+      "min_ms": 0.0,
+      "max_ms": 0.0,
+      "fps": 0.0
+    }
+  },
+  "tegrastats": {
+    "sample_count": 810,
+    "vdd_in_mean_w": 7.930216049382716,
+    "vdd_in_std_w": 0.40327239697525835,
+    "vdd_in_median_w": 7.961,
+    "vdd_in_min_w": 4.193,
+    "vdd_in_max_w": 8.783,
+    "gr3d_freq_mean_pct": 48.150617283950616,
+    "gpu_temp_mean_c": 47.8988987654321,
+    "gpu_temp_max_c": 49.625
+  },
+  "accuracy": {
+    "map50": 0.8796502824971576,
+    "map50_95": 0.5928045646106178,
+    "mean_precision": 0.8826735103248903,
+    "mean_recall": 0.840474928281366,
+    "per_class": {
+      "People": {
+        "class_id": 0,
+        "ground_truth_boxes": 2255,
+        "precision": 0.8826942814072422,
+        "recall": 0.8053215077605321,
+        "ap50": 0.863772692712405,
+        "ap50_95": 0.5325213880233368
+      },
+      "Car": {
+        "class_id": 1,
+        "ground_truth_boxes": 3845,
+        "precision": 0.8972391721482996,
+        "recall": 0.8969771642589451,
+        "ap50": 0.9324530979766662,
+        "ap50_95": 0.6782554879509581
+      },
+      "Bus": {
+        "class_id": 2,
+        "ground_truth_boxes": 129,
+        "precision": 0.8715606757613072,
+        "recall": 0.9147286821705426,
+        "ap50": 0.9172802779652871,
+        "ap50_95": 0.7210833346197687
+      },
+      "Motorcycle": {
+        "class_id": 3,
+        "ground_truth_boxes": 131,
+        "precision": 0.8866555837030248,
+        "recall": 0.7165881975920265,
+        "ap50": 0.8101995734700151,
+        "ap50_95": 0.47824667610105276
+      },
+      "Lamp": {
+        "class_id": 4,
+        "ground_truth_boxes": 514,
+        "precision": 0.8807127288076827,
+        "recall": 0.8891050583657587,
+        "ap50": 0.9088146941851194,
+        "ap50_95": 0.5165792704946611
+      },
+      "Truck": {
+        "class_id": 5,
+        "ground_truth_boxes": 209,
+        "precision": 0.8771786201217845,
+        "recall": 0.8201289595403913,
+        "ap50": 0.8453813586734529,
+        "ap50_95": 0.6301412304739297
+      }
+    }
+  },
+  "host": {
+    "platform": "Linux-6.8.12-1021-tegra-aarch64-with-glibc2.39",
+    "machine": "aarch64",
+    "python": "3.12.3",
+    "torch": "2.14.1+cu130"
+  }
+}

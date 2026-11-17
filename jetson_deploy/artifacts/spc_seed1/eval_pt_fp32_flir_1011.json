@@ -1,0 +1,30 @@
+{
+  "backend": "PyTorch FP32 (unfused, 640x640, batch 1)",
+  "weights": "/home/mingu/spc_stage/work/runs/spc/cmafm_full/seed_1/train/weights/best.pt",
+  "dataset": "FLIR Aligned (effective)",
+  "images": 1011,
+  "ground_truth_boxes": 8214,
+  "detections_after_nms": 37543,
+  "map50": 0.8812024650789707,
+  "map50_95": 0.5183540153050046,
+  "mean_precision": 0.8810396042191375,
+  "mean_recall": 0.807377527354477,
+  "per_class": {
+    "People": {
+      "class_id": 0,
+      "ground_truth_boxes": 4104,
+      "precision": 0.8754758464422208,
+      "recall": 0.7738791423001949,
+      "ap50": 0.8613155762273372,
+      "ap50_95": 0.4387151927536227
+    },
+    "Car": {
+      "class_id": 1,
+      "ground_truth_boxes": 4110,
+      "precision": 0.8866033619960542,
+      "recall": 0.8408759124087591,
+      "ap50": 0.9010893539306043,
+      "ap50_95": 0.5979928378563865
+    }
+  }
+}
