@@ -65,3 +65,4 @@ ssh_tunnel_watchdog.log
 !/results/tables.md
 !/results/eval.csv
 !/results/alpha_seed*.json
+!/results/dataset_stats.md
